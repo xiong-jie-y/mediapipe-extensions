@@ -1,0 +1,20 @@
+{
+    "files.exclude": {
+        "bazel-bin/**": true,
+        "bazel-mediapipe-extensions/**": true,
+        "bazel-out/**": true,
+        "bazel-testlogs/**": true
+    },
+    "files.watcherExclude": {
+        "bazel-bin/**": true,
+        "bazel-mediapipe-extensions/**": true,
+        "bazel-out/**": true,
+        "bazel-testlogs/**": true
+    },
+    "search.exclude": {
+        "bazel-bin/**": true,
+        "bazel-mediapipe-extensions/**": true,
+        "bazel-out/**": true,
+        "bazel-testlogs/**": true
+    },
+}
