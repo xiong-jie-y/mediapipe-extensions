@@ -29,16 +29,40 @@ public:
             calculator_graph_config_contents);
 
         LOG(INFO) << "Initialize the calculator graph.";
-        graph.Initialize(config);
+        auto status = graph.Initialize(config);
+        if (!status.ok()) {
+            LOG(ERROR) << status;
+        }
 
         LOG(INFO) << "Initialize the GPU.";
-        std::shared_ptr<mediapipe::GpuResources> gpu_resources = mediapipe::GpuResources::Create().ValueOrDie();
-        graph.SetGpuResources(std::move(gpu_resources));
-        gpu_helper.InitializeForTest(graph.GetGpuResources().get());
+        auto maybe_gpu_res = std::move(mediapipe::GpuResources::Create());
+        if (maybe_gpu_res.ok()) {
+            LOG(INFO) << "Succeeded get GPU";
+            graph.SetGpuResources(std::move(maybe_gpu_res.ValueOrDie()));
+            gpu_helper.InitializeForTest(graph.GetGpuResources().get());
+        } else {
+             LOG(ERROR) << maybe_gpu_res.status();
+        }
+        // std::shared_ptr<mediapipe::GpuResources> gpu_resources = mediapipe::GpuResources::Create().ValueOrDie();
+        // auto status = 
+        // LOG(INFO) << status;
+        // gpu_helper.InitializeForTest(graph.GetGpuResources().get());
 
-        poller = std::make_shared<mediapipe::OutputStreamPoller>(
-            graph.AddOutputStreamPoller(kOutputStream).ValueOrDie());
+        LOG(INFO) << "Start running the calculator graph.";
+        // ASSIGN_OR_RETURN(*poller.get(),
+        //                 graph.AddOutputStreamPoller(kOutputStream));
+        mediapipe::StatusOrPoller maybe_poller = std::move(graph.AddOutputStreamPoller(kOutputStream));
+        if (maybe_poller.ok()) {
+            poller = std::make_shared<mediapipe::OutputStreamPoller>(
+                std::move(maybe_poller).ValueOrDie());
+        } else {
+            LOG(ERROR) << maybe_poller.status();
+        }
         graph.StartRun({});
+    }
+    ~GraphRunner() {
+        graph.CloseInputStream(kInputStream);
+        graph.WaitUntilDone();
     }
 
     py::array_t<unsigned char> ProcessFrame(py::array_t<unsigned char> &input)
@@ -48,17 +72,23 @@ public:
         py::buffer_info buf = input.request();
         cv::Mat mat(buf.shape[0], buf.shape[1], CV_8UC3, (unsigned char *)buf.ptr);
 
+        LOG(INFO) << "Create image";
         // Wrap Mat into an ImageFrame.
         auto input_frame = absl::make_unique<mediapipe::ImageFrame>(
             mediapipe::ImageFormat::SRGB, mat.cols, mat.rows,
             mediapipe::ImageFrame::kGlDefaultAlignmentBoundary);
         cv::Mat input_frame_mat = mediapipe::formats::MatView(input_frame.get());
         mat.copyTo(input_frame_mat);
+        // LOG(INFO) << "aho";
+        // auto input_frame = absl::make_unique<mediapipe::ImageFrame>(
+        //     mediapipe::ImageFormat::SRGB, buf.shape[0], buf.shape[1],
+        //     (buf.shape[0] * buf.shape[2]), (uint8*)buf.ptr);
 
         // Prepare and add graph input packet.
         size_t frame_timestamp_us =
             (double)cv::getTickCount() / (double)cv::getTickFrequency() * 1e6;
 
+        LOG(INFO) << "RunGlContext";
         gpu_helper.RunInGlContext([this, &input_frame, &frame_timestamp_us]() -> ::mediapipe::Status {
             // Convert ImageFrame to GpuBuffer.
             auto texture = gpu_helper.CreateSourceTexture(*input_frame.get());
@@ -80,6 +110,7 @@ public:
         // break;
         std::unique_ptr<mediapipe::ImageFrame> output_frame;
 
+        LOG(INFO) << "RunFetch";
         // Convert GpuBuffer to ImageFrame.
         gpu_helper.RunInGlContext(
             [this, &packet, &output_frame]() -> ::mediapipe::Status {

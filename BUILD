@@ -8,5 +8,6 @@ pybind_extension(
     deps = [
         "@mediapipe//mediapipe/examples/desktop:demo_run_graph_main_gpu",
         "@mediapipe//mediapipe/graphs/hand_tracking:multi_hand_mobile_calculators",
+        "@mediapipe//mediapipe/graphs/face_mesh:desktop_live_gpu_calculators",
     ],
 )
