@@ -86,7 +86,9 @@ public:
             }
         }
 
-        graph.StartRun({});
+        auto start_run = graph.StartRun({});
+        if (!start_run.ok())
+            LOG(ERROR) << start_run;
     }
     ~GraphRunner()
     {
@@ -162,31 +164,37 @@ public:
         size_t frame_timestamp_us =
             (double)cv::getTickCount() / (double)cv::getTickFrequency() * 1e6;
 
+        
         LOG(INFO) << "RunGlContext";
-        gpu_helper.RunInGlContext([this, &input_frame, &frame_timestamp_us]() -> ::mediapipe::Status {
+        auto run_graph_status = gpu_helper.RunInGlContext([this, &input_frame, &frame_timestamp_us]() -> ::mediapipe::Status {
             // Convert ImageFrame to GpuBuffer.
             auto texture = gpu_helper.CreateSourceTexture(*input_frame.get());
             auto gpu_frame = texture.GetFrame<mediapipe::GpuBuffer>();
             glFlush();
             texture.Release();
             // Send GPU image packet into the graph.
-            graph.AddPacketToInputStream(
+            MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
                 kInputStream, mediapipe::Adopt(gpu_frame.release())
-                                  .At(mediapipe::Timestamp(frame_timestamp_us)));
+                                  .At(mediapipe::Timestamp(frame_timestamp_us))));
 
             return ::mediapipe::OkStatus();
         });
+        if (!run_graph_status.ok()) {
+            LOG(INFO) << run_graph_status;
+        }
 
         // Get the graph result packet, or stop if that fails.
         mediapipe::Packet packet;
-        if (!poller->Next(&packet))
+        if (!poller->Next(&packet)) {
             LOG(INFO) << "error getting packet";
+        }
+
         // break;
         std::unique_ptr<mediapipe::ImageFrame> output_frame;
 
         LOG(INFO) << "RunFetch";
         // Convert GpuBuffer to ImageFrame.
-        gpu_helper.RunInGlContext(
+        auto run_fetch_status = gpu_helper.RunInGlContext(
             [this, &packet, &output_frame]() -> ::mediapipe::Status {
                 auto &gpu_frame = packet.Get<mediapipe::GpuBuffer>();
                 auto texture = gpu_helper.CreateSourceTexture(gpu_frame);
@@ -203,6 +211,10 @@ public:
                 texture.Release();
                 return ::mediapipe::OkStatus();
             });
+        if (!run_fetch_status.ok()) {
+            LOG(INFO) << run_fetch_status;
+        }
+        LOG(INFO) << "Convert Image";
 
         // Convert back to opencv for display or saving.
         cv::Mat output_frame_mat = mediapipe::formats::MatView(output_frame.get());
@@ -219,9 +231,13 @@ public:
             dstPt[i] = pt[i];
         }
 
+        LOG(INFO) << "Getting other outputs";
         // Get other channels.
         for (const auto &[key, poller] : channel_name_to_poller_)
         {
+            if (poller->QueueSize() == 0) {
+                continue;
+            }
             mediapipe::Packet packet;
             if (!poller->Next(&packet))
                 LOG(INFO) << "error getting packet";
