@@ -3,6 +3,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/eigen.h>
 
+
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
@@ -236,27 +237,39 @@ public:
         for (const auto &[key, poller] : channel_name_to_poller_)
         {
             if (poller->QueueSize() == 0) {
+                channel_name_to_pocket_[key] = nullptr;
                 continue;
+            } else {
+                mediapipe::Packet packet;
+                if (!poller->Next(&packet))
+                    LOG(INFO) << "error getting packet";
+                LOG(INFO) << "Getting " << key;
+                channel_name_to_pocket_[key] = &packet;
             }
-            mediapipe::Packet packet;
-            if (!poller->Next(&packet))
-                LOG(INFO) << "error getting packet";
-            LOG(INFO) << "Getting " << key;
-            channel_name_to_pocket_[key] = packet;
         }
 
         return result;
     }
-    template <typename T>
-    const T &GetLatestObject(std::string name)
-    {
-        return channel_name_to_pocket_[name].Get<T>();
-    }
+    // template <typename T>
+    // const T &GetLatestObject(std::string name)
+    // {
+    //     return channel_name_to_pocket_[name].Get<T>();
+    // }
 
     template <typename T>
     std::vector<std::vector<Eigen::Vector3d>> GetPoint3DListsFromLandmark(std::string name)
     {
-        const auto &landmark_lists = channel_name_to_pocket_[name].Get<T>();
+        if (channel_name_to_pocket_.find(name) != channel_name_to_pocket_.end()) {
+            std::vector<std::vector<Eigen::Vector3d>> a(0);
+            return a;
+        }
+
+        if (!channel_name_to_pocket_[name]) {
+            std::vector<std::vector<Eigen::Vector3d>> a(0);
+            return a;
+        }
+
+        const auto &landmark_lists = channel_name_to_pocket_[name]->Get<T>();
 
         if (landmark_lists.size() == 0)
         {
@@ -281,13 +294,13 @@ public:
         return point_3d_lists;
     }
 
-    template <typename T>
-    std::string GetProtobufObject(std::string name)
-    {
-        std::string serialized_str;
-        channel_name_to_pocket_[name].Get<T>().SerializeToString(&serialized_str);
-        return serialized_str;
-    }
+    // template <typename T>
+    // std::string GetProtobufObject(std::string name)
+    // {
+    //     std::string serialized_str;
+    //     channel_name_to_pocket_[name].Get<T>().SerializeToString(&serialized_str);
+    //     return serialized_str;
+    // }
 
 private:
     mediapipe::CalculatorGraphConfig config;
@@ -298,7 +311,7 @@ private:
     std::shared_ptr<mediapipe::OutputStreamPoller> poller;
 
     std::map<std::string, std::shared_ptr<mediapipe::OutputStreamPoller>> channel_name_to_poller_;
-    std::map<std::string, mediapipe::Packet> channel_name_to_pocket_;
+    std::map<std::string, const mediapipe::Packet*> channel_name_to_pocket_;
 };
 
 PYBIND11_MODULE(graph_runner, m)
