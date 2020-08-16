@@ -236,6 +236,7 @@ public:
         // Get other channels.
         for (const auto &[key, poller] : channel_name_to_poller_)
         {
+            // LOG(INFO) << poller->QueueSize();
             if (poller->QueueSize() == 0) {
                 channel_name_to_pocket_[key] = nullptr;
                 continue;
@@ -244,7 +245,7 @@ public:
                 if (!poller->Next(&packet))
                     LOG(INFO) << "error getting packet";
                 LOG(INFO) << "Getting " << key;
-                channel_name_to_pocket_[key] = &packet;
+                channel_name_to_pocket_[key] = std::make_shared<mediapipe::Packet>(packet);
             }
         }
 
@@ -259,7 +260,7 @@ public:
     template <typename T>
     std::vector<std::vector<Eigen::Vector3d>> GetPoint3DListsFromLandmark(std::string name)
     {
-        if (channel_name_to_pocket_.find(name) != channel_name_to_pocket_.end()) {
+        if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
             std::vector<std::vector<Eigen::Vector3d>> a(0);
             return a;
         }
@@ -311,7 +312,7 @@ private:
     std::shared_ptr<mediapipe::OutputStreamPoller> poller;
 
     std::map<std::string, std::shared_ptr<mediapipe::OutputStreamPoller>> channel_name_to_poller_;
-    std::map<std::string, const mediapipe::Packet*> channel_name_to_pocket_;
+    std::map<std::string, std::shared_ptr<mediapipe::Packet>> channel_name_to_pocket_;
 };
 
 PYBIND11_MODULE(graph_runner, m)

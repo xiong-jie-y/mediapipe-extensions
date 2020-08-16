@@ -46,8 +46,10 @@ while(True):
     cv2.imshow("Frame", processed_frame)
 
     # log.add_data("multi_hand_landmarks", current_time, runner.get_normalized_landmark_lists("multi_hand_landmarks"))
+    multi_face_landmarks = runner.get_normalized_landmark_lists(
+        "multi_face_landmarks")
     log.add_data("multi_face_landmarks", current_time,
-                 runner.get_normalized_landmark_lists("multi_face_landmarks"))
+                 multi_face_landmarks)
     log.add_image("input_frame", current_time, processed_frame)
 
     if cv2.waitKey(10) > 0:
