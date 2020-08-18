@@ -1,7 +1,9 @@
 import os
 import streamlit as st
 import result
+
 import facelandmark_utils as flu
+from head_gestures import get_state
 
 def detection_analysis_dashboard():
     # @st.cache(allow_output_mutation=True)
@@ -31,39 +33,6 @@ def detection_analysis_dashboard():
                     positions.append(positions[-1])
 
         return positions
-
-    WINDOW_PERIOD_S_ = 1.0
-    def get_minmax_feature(face_landmark_lists):
-        recent_data = []
-        latest_timestamp = face_landmark_lists[-1].timestamp
-        for face_landmark_list in face_landmark_lists:
-            if (latest_timestamp - WINDOW_PERIOD_S_) < face_landmark_list.timestamp:
-                if len(face_landmark_list.data) == 0:
-                    continue
-                main_face = face_landmark_list.data[0]
-                recent_data.append(main_face)
-
-        if len(recent_data) == 0:
-            return None, None, None, None
-        xs = []
-        ys = []
-        for recent_datum in recent_data:
-            dir_vec = flu.simple_face_direction(recent_datum, only_direction=True)
-            xs.append(dir_vec[0])
-            ys.append(dir_vec[1])
-        return max(xs), min(xs), max(ys), min(ys)
-
-    def get_state(face_landmark_lists):
-        xmax, xmin, ymax, ymin = get_minmax_feature(face_landmark_lists)
-        if xmax is None:
-            return 0
-
-        if ymax > 0.4 and ymin <= 0.0:
-            return 1
-        elif xmax > 0.4 and xmin < -0.4:
-            return -1
-        else:
-            return 0
 
     # Choose result dir.
     result_folders_dir = st.text_input("Location of result folders.", "data/")

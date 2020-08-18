@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 class TimestampedData(NamedTuple):
-    timestamp: int
+    timestamp: float
     data: Any
 
 class HumanReadableLog:
