@@ -5,7 +5,7 @@ import time
 import IPython
 import numpy as np
 from pika.head_gestures import YesOrNoEstimator
-import result
+import pika.logging
 from collections import defaultdict
 import cv2
 
@@ -33,7 +33,7 @@ runner = graph_runner.GraphRunner(
 tag_name = "face_ui"
 
 
-log = result.HumanReadableLog()
+log = pika.logging.HumanReadableLog()
 
 numpy_array_lists = defaultdict(list)
 
@@ -42,7 +42,7 @@ numpy_array_lists = defaultdict(list)
 # import head_gestures
 yes_or_no_estimator = YesOrNoEstimator()
 
-import result
+import pika.logging
 
 width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))   # float
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -62,7 +62,7 @@ while(True):
         "multi_face_landmarks")
         
     state = yes_or_no_estimator.get_state(
-        result.TimestampedData(current_time, multi_face_landmarks))
+        pika.logging.TimestampedData(current_time, multi_face_landmarks))
 
     blank_image = np.zeros((height,width,3), np.uint8)
     if state == 1:

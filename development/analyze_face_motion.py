@@ -1,6 +1,6 @@
 import os
 import streamlit as st
-import result
+import pika.logging
 
 import facelandmark_utils as flu
 from pika.head_gestures import get_state
@@ -8,7 +8,7 @@ from pika.head_gestures import get_state
 def detection_analysis_dashboard():
     # @st.cache(allow_output_mutation=True)
     def load_data(result_folder):
-        return result.HumanReadableLog.load_from_path(result_folder)
+        return pika.logging.HumanReadFableLog.load_from_path(result_folder)
 
     def get_from_box(box):
         return ((box[2] + box[0])/2 - 250)/50 * 0.05
