@@ -3,7 +3,7 @@ import streamlit as st
 import result
 
 import facelandmark_utils as flu
-from head_gestures import get_state
+from pika.head_gestures import get_state
 
 def detection_analysis_dashboard():
     # @st.cache(allow_output_mutation=True)

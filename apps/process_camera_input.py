@@ -4,7 +4,7 @@ import time
 
 import IPython
 import numpy as np
-from head_gestures import YesOrNoEstimator
+from pika.head_gestures import YesOrNoEstimator
 import result
 from collections import defaultdict
 import cv2
@@ -39,7 +39,7 @@ numpy_array_lists = defaultdict(list)
 
 
 
-import head_gestures
+# import head_gestures
 yes_or_no_estimator = YesOrNoEstimator()
 
 import result
