@@ -46,6 +46,24 @@ import pika.logging
 
 width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))   # float
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+labels = []
+
+import apps.controll_window
+from multiprocessing import Process
+
+from multiprocessing import Value
+
+label_state = Value('i', 0)
+action = Value('i', 0)
+p = Process(target=apps.controll_window.create_window, args=(label_state, action))
+p.start()
+
+print("start")
+value_to_label = {}
+value_to_label[1] = "Nodding"
+value_to_label[-1] = "Shaking"
+value_to_label[0] = None
+
 while(True):
     current_time = time.time()
     ret, frame = cap.read()
@@ -79,15 +97,31 @@ while(True):
         for point in face_landmark:
             # print((int(point[0] * width), int(point[1] * height)))
             cv2.circle(blank_image, (int(point[0] * width), int(point[1] * height)), 3, (0, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
-        
+
+    # cv2.imshow("Frame", blank_image)
     cv2.imshow("Frame", blank_image)
 
     log.add_data("multi_face_landmarks", current_time,
                  multi_face_landmarks)
     log.add_image("input_frame", current_time, blank_image)
 
-    if cv2.waitKey(10) > 0:
+    # time.sleep(0.001)
+    # if cv2.waitKey(1) > 0:
+    #     break
+
+    pressed_key = cv2.waitKey(1)
+    # if pressed_key == ord("a"):
+    #     log.add_data("motion_label", current_time, "Nodding")
+    # elif pressed_key == ord("b"):
+    #     log.add_data("motion_label", current_time, "Shaking")
+    # else:
+    #     log.add_data("motion_label", current_time, None)
+    log.add_data("motion_label", current_time, value_to_label[label_state.value])
+    if action.value:
+        print("e")
         break
+
+p.kill()
 
 datetime_now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 log.save(f"data/{tag_name}_{datetime_now}",
