@@ -111,10 +111,10 @@ def detection_analysis_dashboard():
     fig.update_layout(xaxis_title='timestamp')
     st.write(fig)
 
-    for landmark_partial_seq, label in get_sequence_from_label(multi_face_landmark_lists, motion_labels):
-        if label == "Nodding" or label == "Shaking":
-            st.write(label)
-            st.write(get_minmax_feature_from_base_dir(landmark_partial_seq, None))
+    # for landmark_partial_seq, label in get_sequence_from_label(multi_face_landmark_lists, motion_labels):
+    #     if label == "Nodding" or label == "Shaking":
+    #         st.write(label)
+    #         st.write(get_minmax_feature_from_base_dir(landmark_partial_seq, None))
 
 
     def draw_landmark_2d_with_index(landmark, filter_ids=[]):

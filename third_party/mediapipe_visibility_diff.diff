@@ -1,0 +1,13 @@
+diff --git a/mediapipe/python/pybind/BUILD b/mediapipe/python/pybind/BUILD
+index 72ee24c..4ec655c 100644
+--- a/mediapipe/python/pybind/BUILD
++++ b/mediapipe/python/pybind/BUILD
+@@ -16,7 +16,7 @@ load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
+ 
+ licenses(["notice"])  # Apache 2.0
+ 
+-package(default_visibility = ["//mediapipe/python:__subpackages__"])
++package(default_visibility = ["//visibility:public"])
+ 
+ pybind_library(
+     name = "calculator_graph",

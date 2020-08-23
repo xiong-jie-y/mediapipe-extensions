@@ -9,6 +9,7 @@ def plot_xy(timestamps, *args):
     import plotly.graph_objects as go
     import streamlit as st
     data = []
+    timestamps = [timestamp - timestamps[0] for timestamp in timestamps]
     for i, seq in enumerate(args):
         data.append(go.Scatter(x=timestamps, y=seq, name=f"data_{i}", line = dict(width=4, dash='dot')))
 
@@ -25,7 +26,10 @@ def get_projected_length(vec, base):
 
 import streamlit as st
 
-WINDOW_PERIOD_S_ = 0.8
+# WINDOW_PERIOD_S_ = 0.8
+
+# Shorter period is better for gradual change.
+WINDOW_PERIOD_S_ = 0.5
 def get_minmax_feature_from_base_dir(face_landmark_lists, center):
     recent_data = []
     timestamps = []
@@ -45,7 +49,8 @@ def get_minmax_feature_from_base_dir(face_landmark_lists, center):
     for recent_datum in recent_data:
         dir_vecs.append(flu.simple_face_direction(recent_datum, only_direction=True))
 
-    first_part_slice = slice(0, int(len(dir_vecs)/5))
+    # first_part_slice = slice(0, int(len(dir_vecs)/5))
+    first_part_slice = slice(0, int(len(dir_vecs)))
     estimated_neatral_dir_vec = np.mean(dir_vecs[first_part_slice], axis=0)
     estimated_neautral_down = np.zeros((3,))
     estimated_neautral_right = np.zeros((3,))
@@ -94,9 +99,9 @@ def get_minmax_feature_from_base_dir(face_landmark_lists, center):
 
     feature = max(xs), min(xs), max(ys), min(ys)
     # st.write(feature)
-    # if _get_state_from_feature(feature) == 1:
     dir_vecs = np.array(dir_vecs)
-    # plot_xy(timestamps, xs, ys, dir_vecs[:, 0], dir_vecs[:, 1])
+    # if _get_state_from_feature(feature) == 1 or _get_state_from_feature(feature) == -1:
+    #     plot_xy(timestamps, xs, ys, dir_vecs[:, 0], dir_vecs[:, 1])
 
     return feature
 
