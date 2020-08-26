@@ -3,7 +3,7 @@ import numpy as np
 import streamlit as st
 import pika.logging
 
-import facelandmark_utils as flu
+import pika.facelandmark_utils as flu
 from pika.head_gestures import YesOrNoEstimator, get_minmax_feature_from_base_dir, get_state
 
 def detection_analysis_dashboard():

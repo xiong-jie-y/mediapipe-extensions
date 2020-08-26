@@ -9,7 +9,7 @@ import pika.logging
 from collections import defaultdict
 import cv2
 
-import graph_runner
+from pika import graph_runner
 
 cap = cv2.VideoCapture(4)
 
@@ -124,5 +124,5 @@ while(True):
 p.kill()
 
 datetime_now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-log.save(f"data/{tag_name}_{datetime_now}",
+log.save(f"output-data/{tag_name}_{datetime_now}",
          video_option={"frame_rate": cap.get(cv2.CAP_PROP_FPS)})

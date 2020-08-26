@@ -14,20 +14,19 @@ This API is provided with python binding using pybind11 and it support GPU.
 
 To run simple app using this graph runner API, please follow these steps.
 
-(WIP)
 ```sh
-python setup.py build_graph_runner
+python setup.py build_ext
 python apps/run_face_mesh_live.py
 ```
 
 ## Apps
 ### Head Gesture Recognition
 This app is for recognizing head gesture.
-Currently supported gesture is nodding and shaking head.
+Currently supported gesture is nodding and shaking head. ([Video](https://www.youtube.com/watch?v=PshPSOAfv0E))
 
 ```sh
-python setup.py build_graph_runner
-python apps/recognize_head_gesture.py
+python setup.py build_ext
+GLOG_minloglevel=2 python apps/recognize_head_gesture.py
 ```
 
 ## Development Code
