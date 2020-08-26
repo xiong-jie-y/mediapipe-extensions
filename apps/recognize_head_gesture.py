@@ -2,7 +2,6 @@
 import datetime
 import time
 
-import IPython
 import numpy as np
 from pika.head_gestures import YesOrNoEstimator
 import pika.logging

@@ -6,7 +6,13 @@ The name comes from capitals of "Perception toward Interaction with [Kawaii](htt
 This repository is currently tested on Ubuntu 18.04 and python3.7.7.
 So it might work around these OS and python versions.
 
-(TBD)
+* [requirements to run mediapipe](https://google.github.io/mediapipe/getting_started/install)
+* [pybind11](https://pybind11.readthedocs.io/en/stable/basics.html)
+
+For python
+```
+conda env create -f environment.yml
+```
 
 ## Graph Runner API
 Graph Runner API is an API with higher level than calculator framework API in mediapipe.
