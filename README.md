@@ -24,7 +24,7 @@ python apps/run_face_mesh_live.py
 This app is for recognizing head gesture.
 Currently supported gesture is nodding and shaking head. ([Video](https://www.youtube.com/watch?v=PshPSOAfv0E))
 
-```sh
+```sh                                
 python setup.py build_ext
 GLOG_minloglevel=2 python apps/recognize_head_gesture.py
 ```
