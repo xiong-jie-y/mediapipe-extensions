@@ -46,7 +46,7 @@ POSE_LANDMARKS = 'pose_landmarks'
 class GraphRunnerCpu:
   """MediaPipe upper body pose tracker."""
 
-  def __init__(self, graph_path, output_channels):
+  def __init__(self, graph_path, output_channels=[]):
     """The init method of MediaPipe upper body pose tracker.
     The method reads the upper body pose tracking cpu binary graph and
     initializes a CalculatorGraph from it. The output packets of pose_landmarks
@@ -138,7 +138,7 @@ class GraphRunnerCpu:
       success, input_frame = cap.read()
       if not success:
         break
-      self._latest_pose, output_frame = self._run_graph(input_frame[:, :, ::-1])
+      output_frame = self._run_graph(input_frame[:, :, ::-1])
       cv2.imshow('MediaPipe upper body pose tracker', output_frame[:, :, ::-1])
       if cv2.waitKey(5) & 0xFF == 27:
         break
