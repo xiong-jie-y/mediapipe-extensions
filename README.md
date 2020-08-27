@@ -35,7 +35,7 @@ cd modules/face
 wget -O - https://raw.githubusercontent.com/PINTO0309/PINTO_model_zoo/master/032_FaceMesh/02_weight_quantization/download.sh | bash
 cd ../../
 
-bash development/prepare_amework_bindings.sh
+bash development/prepare_framework_bindings.sh
 python apps/run_face_mesh_live_cpu.py
 ```
 
