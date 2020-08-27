@@ -15,6 +15,7 @@ conda env create -f environment.yml
 ```
 
 ## Graph Runner API
+### Graph Runner API for GPU
 Graph Runner API is an API with higher level than calculator framework API in mediapipe.
 This API is provided with python binding using pybind11 and it support GPU.
 
@@ -23,6 +24,19 @@ To run simple app using this graph runner API, please follow these steps.
 ```sh
 python setup.py build_ext
 python apps/run_face_mesh_live.py
+```
+
+### Graph Runner API for CPU
+To run graph runner for cpu (pure python).
+Run the following command.
+
+```sh
+cd modules/face
+wget -O - https://raw.githubusercontent.com/PINTO0309/PINTO_model_zoo/master/032_FaceMesh/02_weight_quantization/download.sh | bash
+cd ../../
+
+bash development/prepare_amework_bindings.sh
+python apps/run_face_mesh_live_cpu.py
 ```
 
 ## Apps
