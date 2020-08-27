@@ -43,10 +43,10 @@ OUTPUT_VIDEO = 'output_video'
 POSE_LANDMARKS = 'pose_landmarks'
 
 
-class UpperBodyPoseTracker:
+class GraphRunnerCpu:
   """MediaPipe upper body pose tracker."""
 
-  def __init__(self):
+  def __init__(self, graph_path, output_channels):
     """The init method of MediaPipe upper body pose tracker.
     The method reads the upper body pose tracking cpu binary graph and
     initializes a CalculatorGraph from it. The output packets of pose_landmarks
@@ -58,16 +58,17 @@ class UpperBodyPoseTracker:
     root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     mp.resource_util.set_resource_dir(root_path)
     # print(root_path)
-    print("aaaa")
     self._graph = mp.CalculatorGraph(
         # graph_config=open(os.path.join(root_path, 
         #     'mediapipe/graphs/pose_tracking/upper_body_pose_tracking_cpu.pbtxt'), 'r').read())
         graph_config=open(os.path.join(root_path, 
-          "graphs/face_mesh_desktop_live_any_model_cpu.pbtxt"), 'r').read())
+          graph_path), 'r').read())
     self._outputs = {}
-    for stream_name in [OUTPUT_VIDEO]:
+    self._output_channels = output_channels
+    for stream_name in [OUTPUT_VIDEO] + output_channels:
       self._graph.observe_output_stream(stream_name, self._assign_packet)
     self._graph.start_run()
+    self._channel_outputs = {}
 
   def run(
       self,
@@ -137,12 +138,18 @@ class UpperBodyPoseTracker:
       success, input_frame = cap.read()
       if not success:
         break
-      _, output_frame = self._run_graph(input_frame[:, :, ::-1])
+      self._latest_pose, output_frame = self._run_graph(input_frame[:, :, ::-1])
       cv2.imshow('MediaPipe upper body pose tracker', output_frame[:, :, ::-1])
       if cv2.waitKey(5) & 0xFF == 27:
         break
     cap.release()
     cv2.destroyAllWindows()
+
+  def get_normalized_landmark_lists(self, channel_name):
+    return self._channel_outputs[channel_name] if channel_name in self._channel_outputs else None
+
+  def process_frame(self, input_frame):
+    return self._run_graph(input_frame)
 
   def close(self) -> None:
     self._graph.close()
@@ -176,14 +183,16 @@ class UpperBodyPoseTracker:
         timestamp=mp.Timestamp.from_seconds(start_time))
     self._graph.wait_until_idle()
 
-    pose_landmarks = None
-    if POSE_LANDMARKS in self._outputs:
-      pose_landmarks = mp.packet_getter.get_proto(self._outputs[POSE_LANDMARKS])
+    for output_channel in self._output_channels:
+      if output_channel in self._outputs:
+        self._channel_outputs[output_channel] = mp.packet_getter.get_proto_list(self._outputs[output_channel])
+
     annotated_image = mp.packet_getter.get_image_frame(
         self._outputs[OUTPUT_VIDEO]).numpy_view()
+    
     print('UpperBodyPoseTracker.Run() took',
           time.time() - start_time, 'seconds')
-    return pose_landmarks, annotated_image
+    return annotated_image
 
   def _assign_packet(self, stream_name: str, packet: mp.Packet) -> None:
     self._outputs[stream_name] = packet

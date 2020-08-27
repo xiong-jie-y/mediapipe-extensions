@@ -1,6 +1,8 @@
 # This is an example to run the graph in python.
 import datetime
+from multiprocessing import process
 import time
+import IPython
 
 import numpy as np
 from pika.head_gestures import YesOrNoEstimator
@@ -11,6 +13,7 @@ import cv2
 from pika import graph_runner
 
 cap = cv2.VideoCapture(4)
+from pika.graph_runner_cpu import GraphRunnerCpu
 
 # runner = graph_runner.GraphRunner(
 #         "mediapipe/graphs/hand_tracking/multi_hand_tracking_mobile.pbtxt",
@@ -24,10 +27,19 @@ cap = cv2.VideoCapture(4)
 #     "mediapipe/graphs/pose_tracking/upper_body_pose_tracking_gpu.pbtxt", []
 # )
 
-runner = graph_runner.GraphRunner(
-    "mediapipe/graphs/face_mesh/face_mesh_desktop_live_gpu.pbtxt", [
-        "multi_face_landmarks"]
-)
+running_mode = "cpu"
+
+if running_mode == "cpu":
+    runner = GraphRunnerCpu(
+        "graphs/face_mesh_desktop_live_any_model_cpu.pbtxt", 
+        ["multi_face_landmarks"]
+    )
+else:
+    runner = graph_runner.GraphRunner(
+        "mediapipe/graphs/face_mesh/face_mesh_desktop_live_gpu.pbtxt", [
+            "multi_face_landmarks"]
+    )
+
 
 tag_name = "face_ui"
 
@@ -71,31 +83,40 @@ while(True):
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     processed_frame = runner.process_frame(gray)
-    processed_frame = processed_frame.reshape((480, 640, 4))
+
+    if running_mode == "gpu":
+        processed_frame = processed_frame.reshape((480, 640, 4))
     processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_RGB2BGR)
 
     # log.add_data("multi_hand_landmarks", current_time, runner.get_normalized_landmark_lists("multi_hand_landmarks"))
     multi_face_landmarks = runner.get_normalized_landmark_lists(
         "multi_face_landmarks")
-        
-    state = yes_or_no_estimator.get_state(
-        pika.logging.TimestampedData(current_time, multi_face_landmarks))
 
     blank_image = np.zeros((height,width,3), np.uint8)
-    if state == 1:
-        cv2.putText(blank_image, "Yes", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
-            (255, 255, 255), 1, cv2.LINE_AA)
-        # print("yes")
-        
-    elif state == -1:
-        cv2.putText(blank_image, "No", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
-            (255, 255, 255), 1, cv2.LINE_AA)
-        # print("no")
+    if multi_face_landmarks is not None:
+        if running_mode == "cpu":
+            multi_face_landmarks = [np.array([
+                [point.x, point.y, point.z]
+                for point in multi_face_landmark.landmark])
+                for multi_face_landmark in multi_face_landmarks]
 
-    for face_landmark in multi_face_landmarks:
-        for point in face_landmark:
-            # print((int(point[0] * width), int(point[1] * height)))
-            cv2.circle(blank_image, (int(point[0] * width), int(point[1] * height)), 3, (0, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
+        state = yes_or_no_estimator.get_state(
+            pika.logging.TimestampedData(current_time, multi_face_landmarks))
+
+        if state == 1:
+            cv2.putText(blank_image, "Yes", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
+                (255, 255, 255), 1, cv2.LINE_AA)
+            # print("yes")
+            
+        elif state == -1:
+            cv2.putText(blank_image, "No", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
+                (255, 255, 255), 1, cv2.LINE_AA)
+            # print("no")
+
+        for face_landmark in multi_face_landmarks:
+            for point in face_landmark:
+                # print((int(point[0] * width), int(point[1] * height)))
+                cv2.circle(blank_image, (int(point[0] * width), int(point[1] * height)), 3, (0, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
 
     # cv2.imshow("Frame", blank_image)
     cv2.imshow("Frame", blank_image)
