@@ -50,11 +50,11 @@ def detection_analysis_dashboard():
             previous_label = label.data
 
     # Choose result dir.
-    result_folders_dir = st.text_input("Location of result folders.", "data/")
+    result_folders_dir = st.text_input("Location of result folders.", "output-data/")
     result_folders = sorted(list(next(os.walk(result_folders_dir))[1]), reverse=True)
     result_folder = st.selectbox("Result folder", result_folders)
 
-    logged_data = load_data(os.path.join("data", result_folder))
+    logged_data = load_data(os.path.join("output-data", result_folder))
 
     images = logged_data.get_images_with_timestamp('input_frame')
     multi_face_landmark_lists = logged_data.get_data("multi_face_landmarks")
