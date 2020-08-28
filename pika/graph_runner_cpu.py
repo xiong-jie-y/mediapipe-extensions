@@ -46,7 +46,7 @@ POSE_LANDMARKS = 'pose_landmarks'
 class GraphRunnerCpu:
   """MediaPipe upper body pose tracker."""
 
-  def __init__(self, graph_path, output_channels=[]):
+  def __init__(self, graph_path, output_channels=[], input_configs={}):
     """The init method of MediaPipe upper body pose tracker.
     The method reads the upper body pose tracking cpu binary graph and
     initializes a CalculatorGraph from it. The output packets of pose_landmarks
@@ -67,8 +67,15 @@ class GraphRunnerCpu:
     self._output_channels = output_channels
     for stream_name in [OUTPUT_VIDEO] + output_channels:
       self._graph.observe_output_stream(stream_name, self._assign_packet)
-    self._graph.start_run()
+    self._graph.start_run(input_side_packets=self.__create_packet_map(input_configs))
     self._channel_outputs = {}
+
+  def __create_packet_map(self, input_configs):
+    packet_map = {}
+    for key, value in input_configs.items():
+      if isinstance(value, str):
+        packet_map[key] = mp.packet_creator.create_string(value)
+    return packet_map
 
   def run(
       self,

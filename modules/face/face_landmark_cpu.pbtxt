@@ -17,6 +17,8 @@ type: "FaceLandmarkCpuAnyModel"
 
 # CPU image. (ImageFrame)
 input_stream: "IMAGE:image"
+
+input_side_packet: "MODEL_PATH:model_file_path"
 # ROI (region of interest) within the given image where a face is located.
 # (NormalizedRect)
 input_stream: "ROI:roi"
@@ -64,17 +66,31 @@ node {
   output_stream: "TENSORS:input_tensor"
 }
 
+node {
+  calculator: "LocalFileContentsCalculator"
+  input_side_packet: "FILE_PATH:model_file_path"
+  output_side_packet: "CONTENTS:contents"
+}
+
+node {
+  calculator: "TfLiteModelCalculator"
+  input_side_packet: "MODEL_BLOB:contents"
+  output_side_packet: "MODEL:model"
+}
+
 # Runs a TensorFlow Lite model on CPU that takes an image tensor and outputs a
 # vector of tensors representing, for instance, detection boxes/keypoints and
 # scores.
 node {
   calculator: "TfLiteInferenceCalculator"
   input_stream: "TENSORS:input_tensor"
+  input_side_packet: "MODEL:model"
   output_stream: "TENSORS:output_tensors"
   options: {
     [mediapipe.TfLiteInferenceCalculatorOptions.ext] {
       # model_path: "modules/face/face_landmark_192_float16_quant.tflite"
-      model_path: "modules/face/face_landmark_192_weight_quant.tflite"
+      # model_path: "modules/face/face_landmark_192_weight_quant.tflite"
+      # model_path: "mediapipe/modules/face_landmark/face_landmark.tflite"
       delegate { xnnpack {} }
     }
   }
