@@ -107,10 +107,10 @@ class BuildBazelExtension(build_ext.build_ext):
 
 
 setuptools.setup(
-    name='pika',
+    name='pikapi',
     version=__version__,
-    url='https://github.com/xiong-jie-y/pika',
-    description='Pika is a perception library for interaction with agents.',
+    url='https://github.com/xiong-jie-y/pikapi',
+    description='Pikapi is a perception library for interaction with agents.',
     author='xiong jie',
     author_email='fwvillage@gmail.com',
     long_description=open(os.path.join(MP_ROOT_PATH, 'README.md')).read(),
@@ -121,7 +121,7 @@ setuptools.setup(
         'build_ext': BuildBazelExtension,
     },
     ext_modules=[
-        BazelExtension('//pika:graph_runner'),
+        BazelExtension('//pikapi:graph_runner'),
     ],
     zip_safe=False,
     include_package_data=True,

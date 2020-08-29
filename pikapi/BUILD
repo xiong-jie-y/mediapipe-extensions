@@ -3,7 +3,7 @@ load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 pybind_extension(
     name = "graph_runner",
     srcs = [
-        "graph_runner.cc"
+        "graph_runner.cc",
     ],
     deps = [
         "@mediapipe//mediapipe/examples/desktop:demo_run_graph_main_gpu",
@@ -11,7 +11,7 @@ pybind_extension(
         "@mediapipe//mediapipe/graphs/face_mesh:desktop_live_gpu_calculators",
         "//modules/face:face_landmark_front_gpu",
         # "@mediapipe//mediapipe/graphs/face_mesh:mobile_calculators",
-        "@mediapipe//mediapipe/graphs/pose_tracking:upper_body_pose_tracking_gpu_deps"
+        "@mediapipe//mediapipe/graphs/pose_tracking:upper_body_pose_tracking_gpu_deps",
     ],
 )
 
@@ -45,6 +45,6 @@ pybind_extension(
         "@mediapipe//mediapipe/calculators/core:constant_side_packet_calculator",
         "@mediapipe//mediapipe/calculators/core:flow_limiter_calculator",
         # "@mediapipe//mediapipe/graphs/face_mesh:desktop_live_gpu_calculators"
-        "//cpp/calculators:tensor_remap_calculator"
+        "//cpp/calculators:tensor_remap_calculator",
     ],
 )

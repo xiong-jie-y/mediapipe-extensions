@@ -1,4 +1,4 @@
-name: py37_pika
+name: py37_pikapi
 channels:
   - conda-forge
   - defaults

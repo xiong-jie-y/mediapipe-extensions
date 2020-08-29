@@ -1,6 +1,6 @@
-# PIKA
+# PIKAPI
 This repository contains perception algorithms for interaction with agetns.
-The name comes from capitals of "Perception toward Interaction with [Kawaii](https://en.wikipedia.org/wiki/Kawaii) Agents". My focus is making the world full of kawaii characters.
+The name comes from capitals of "Perception toward Interaction with [Kawaii](https://en.wikipedia.org/wiki/Kawaii) Agents and Pretty Individuals". My focus is making the world full of kawaii characters.
 
 ## Requirements
 This repository is currently tested on Ubuntu 18.04 and python3.7.7.

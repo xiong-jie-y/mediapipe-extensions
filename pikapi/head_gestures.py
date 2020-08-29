@@ -1,7 +1,7 @@
 from collections import deque
 
 from scipy.spatial.transform.rotation import Rotation
-import pika.facelandmark_utils as flu
+import pikapi.facelandmark_utils as flu
 
 import numpy as np
 

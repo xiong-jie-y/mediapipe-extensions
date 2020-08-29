@@ -1,7 +1,7 @@
 # This is an example to run the graph in python.
 import cv2
 
-from pika import graph_runner
+from pikapi import graph_runner
 
 import click
 

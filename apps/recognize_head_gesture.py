@@ -5,13 +5,13 @@ import time
 import IPython
 
 import numpy as np
-from pika.head_gestures import YesOrNoEstimator
-import pika.logging
+from pikapi.head_gestures import YesOrNoEstimator
+import pikapi.logging
 from collections import defaultdict
 import cv2
 
-from pika import graph_runner
-from pika.graph_runner_cpu import GraphRunnerCpu
+from pikapi import graph_runner
+from pikapi.graph_runner_cpu import GraphRunnerCpu
 
 import click
 
@@ -35,7 +35,7 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
                 "multi_face_landmarks"]
         )
 
-    log = pika.logging.HumanReadableLog()
+    log = pikapi.logging.HumanReadableLog()
 
     numpy_array_lists = defaultdict(list)
 
@@ -90,7 +90,7 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
                     for multi_face_landmark in multi_face_landmarks]
 
             state = yes_or_no_estimator.get_state(
-                pika.logging.TimestampedData(current_time, multi_face_landmarks))
+                pikapi.logging.TimestampedData(current_time, multi_face_landmarks))
 
             if state == 1:
                 cv2.putText(blank_image, "Yes", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
