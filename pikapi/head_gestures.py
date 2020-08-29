@@ -24,7 +24,7 @@ def get_projected_length(vec, base):
     # a_m = np.linalg.norm(vec)
     return vec.dot(base) / np.sqrt(np.linalg.norm(base))
 
-import streamlit as st
+# import streamlit as st
 
 # WINDOW_PERIOD_S_ = 0.8
 

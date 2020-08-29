@@ -1,0 +1,69 @@
+diff --git a/third_party/ffmpeg_linux.BUILD b/third_party/ffmpeg_linux.BUILD
+index a2d588b..d6a1de7 100644
+--- a/third_party/ffmpeg_linux.BUILD
++++ b/third_party/ffmpeg_linux.BUILD
+@@ -20,10 +20,10 @@ cc_library(
+     name = "libffmpeg",
+     srcs = glob(
+         [
+-            "lib/x86_64-linux-gnu/libav*.so",
++            "lib/aarch64-linux-gnu/libav*.so",
+         ],
+     ),
+-    hdrs = glob(["include/x86_64-linux-gnu/libav*/*.h"]),
++    hdrs = glob(["include/libav*/*.h"]),
+     includes = ["include"],
+     linkopts = [
+         "-lavcodec",
+@@ -33,3 +33,4 @@ cc_library(
+     linkstatic = 1,
+     visibility = ["//visibility:public"],
+ )
++
+diff --git a/third_party/opencv_linux.BUILD b/third_party/opencv_linux.BUILD
+index 26978d5..37012cb 100644
+--- a/third_party/opencv_linux.BUILD
++++ b/third_party/opencv_linux.BUILD
+@@ -11,31 +11,30 @@ exports_files(["LICENSE"])
+ # '                libopencv-imgproc-dev libopencv-video-dev'
+ # on Debian buster/Ubuntu 18.04.
+ # If you install OpenCV separately, please modify the build rule accordingly.
++
+ cc_library(
+     name = "opencv",
+     srcs = glob(
+         [
+-            "lib/x86_64-linux-gnu/libopencv_core.so",
+-            "lib/x86_64-linux-gnu/libopencv_calib3d.so",
+-            "lib/x86_64-linux-gnu/libopencv_features2d.so",
+-            "lib/x86_64-linux-gnu/libopencv_highgui.so",
+-            "lib/x86_64-linux-gnu/libopencv_imgcodecs.so",
+-            "lib/x86_64-linux-gnu/libopencv_imgproc.so",
+-            "lib/x86_64-linux-gnu/libopencv_video.so",
+-            "lib/x86_64-linux-gnu/libopencv_videoio.so",
++            "lib/aarch64-linux-gnu/libopencv_core.so",
++            "lib/aarch64-linux-gnu/libopencv_highgui.so",
++            "lib/aarch64-linux-gnu/libopencv_imgcodecs.so",
++            "lib/aarch64-linux-gnu/libopencv_imgproc.so",
++            "lib/aarch64-linux-gnu/libopencv_video.so",
++            "lib/aarch64-linux-gnu/libopencv_videoio.so",
+         ],
+     ),
+     hdrs = glob([
+         # For OpenCV 3.x
+-        "include/opencv2/**/*.h*",
++        # "include/opencv2/**/*.h*",
+         # For OpenCV 4.x
+-        # "include/opencv4/opencv2/**/*.h*",
++        "include/opencv4/opencv2/**/*.h*",
+     ]),
+     includes = [
+         # For OpenCV 3.x
+-        "include/",
++        # "include/",
+         # For OpenCV 4.x
+-        # "include/opencv4/",
++        "include/opencv4/",
+     ],
+     linkstatic = 1,
+     visibility = ["//visibility:public"],

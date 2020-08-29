@@ -1,4 +1,4 @@
-workspace(name = "mediapipe_extensions")
+workspace(name = "pikapi")
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -9,10 +9,14 @@ git_repository(
     tag = "v0.7.9",
     remote = "git@github.com:google/mediapipe.git",
     patches = [
-        "@//third_party:mediapipe_visibility_diff.diff",
+        "@//third_party:mediapipe_pybind.diff",
+        # Turn off this command when building on raspberry pi.
+        # "@//third_party:mediapipe_rasp.diff"
     ],
     patch_args = [
         "-p1",
+        # Turn off this command when building on raspberry pi.
+        # "-p1",
     ],
 )
 

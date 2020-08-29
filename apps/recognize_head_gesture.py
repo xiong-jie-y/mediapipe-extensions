@@ -2,7 +2,7 @@
 import datetime
 from multiprocessing import process
 import time
-import IPython
+# import IPython
 
 import numpy as np
 from pikapi.head_gestures import YesOrNoEstimator
@@ -10,7 +10,6 @@ import pikapi.logging
 from collections import defaultdict
 import cv2
 
-from pikapi import graph_runner
 from pikapi.graph_runner_cpu import GraphRunnerCpu
 
 import click
@@ -27,9 +26,21 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
         print("Running on cpu mode")
         runner = GraphRunnerCpu(
             "graphs/face_mesh_desktop_live_any_model_cpu.pbtxt", 
-            ["multi_face_landmarks"]
+            ["multi_face_landmarks"], 
+            {
+                # "detection_model_file_path": "modules/face/face_detection_front_128_float16_quant.tflite",
+                "detection_model_file_path": "modules/face/face_detection_front_128_full_integer_quant.tflite",
+                # "detection_model_file_path": "modules/face/face_detection_front_128_integer_quant.tflite",
+                # "detection_model_file_path": "mediapipe/models/face_detection_front.tflite",
+                # "landmark_model_file_path": "mediapipe/modules/face_landmark/face_landmark.tflite",
+                # "landmark_model_file_path": "modules/face/face_landmark_192_float16_quant.tflite",
+                "landmark_model_file_path": "modules/face/face_landmark_192_full_integer_quant.tflite",
+                # "landmark_model_file_path": "modules/face/face_landmark_192_integer_quant.tflite",
+            }
         )
     else:
+        # Importing here to avoid compile this module, when using cpu.
+        from pikapi import graph_runner
         runner = graph_runner.GraphRunner(
             "mediapipe/graphs/face_mesh/face_mesh_desktop_live_gpu.pbtxt", [
                 "multi_face_landmarks"]
@@ -71,6 +82,11 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
             break
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        orgHeight, orgWidth = gray.shape[:2]
+        size = (int(orgWidth/2), int(orgHeight/2))
+        processed_frame = cv2.resize(gray, size)
+
+        
         processed_frame = runner.process_frame(gray)
 
         if running_mode == "gpu":

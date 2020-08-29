@@ -143,6 +143,9 @@ class GraphRunnerCpu:
         'self terminate after 30 seconds.')
     while cap.isOpened() and time.time() - start_time < 30:
       success, input_frame = cap.read()
+      orgHeight, orgWidth = input_frame.shape[:2]
+      size = (int(orgWidth/2), int(orgHeight/2))
+      input_frame = cv2.resize(input_frame, size)
       if not success:
         break
       output_frame = self._run_graph(input_frame[:, :, ::-1])
