@@ -1,7 +1,7 @@
 from scipy.spatial.transform import Rotation
 import pickle
-from shapely.geometry import MultiPoint
-import streamlit as st
+# from shapely.geometry import MultiPoint
+# import streamlit as st
 import json
 import numpy as np
 
@@ -187,7 +187,7 @@ def get_lipclass_shape(landmark, should_normalize_lip=True):
 
     return class_map
 
-from numba import jit
+# from numba import jit
 
 def get_shortest_rotvec_between_two_vector(a, b):
     """Get shortest rotation between two vectors.
@@ -217,33 +217,6 @@ def get_shortest_rotvec_between_two_vector(a, b):
     return rotation_axis, theta
 
 
-@jit(nopython=True)
-def get_shortest_rotvec_between_two_vector2(a, b):
-    a = a / np.linalg.norm(a)
-    b = b / np.linalg.norm(b)
-
-    rotation_axis = np.cross(a, b)
-
-    # Because they are unit vectors.
-    theta = np.arccos(a.dot(b))
-
-    return rotation_axis, theta
-
-# @jit(nopython=True)
-def get_shortest_rotvec_between_two_vector3(a, b):
-    # a = a / np.linalg.norm(a, axis=1)
-    # b = b / np.linalg.norm(b, axis=1)
-    a = a / np.sum(a * a, axis=1)
-    b = b / np.sum(b * b, axis=1)
-
-    rotation_axis = np.cross(a, b, axis=1)
-
-    # Because they are unit vectors.
-    # theta = np.arccos([np.dot(a_i,b_i) for a_i,b_i in zip(a, b)])
-    theta = np.arccos(np.sum(a * b, axis=1))
-
-    return rotation_axis, theta
-
 
 def normalize_lip(landmark):
     direction = landmark[291] - landmark[61]
@@ -259,32 +232,6 @@ def normalize_lip(landmark):
     landmark[LIPSYNC_KEYPOINT_IDS] = rotvec.apply(
         landmark[LIPSYNC_KEYPOINT_IDS])
 
-@jit
-def get_relative_angles_from_wrist_v2(landmark, finger_ids):
-    # import IPython; IPython.embed()
-    
-    finger_pos = landmark[WRIST_IDS + finger_ids]
-    finger_diff = finger_pos[1:] - finger_pos[:-1]
-
-    # rotations = []
-    # for a, b in zip(finger_diff[1:], finger_diff[:-1]):
-    #     rotations.append(get_shortest_rotvec_between_two_vector2(a, b))
-    return get_shortest_rotvec_between_two_vector3(finger_diff[1:], finger_diff[:-1])
-
-    # return rotations
-
-@jit(nopython=True)
-def get_relative_angles(position_array):
-    finger_diff = position_array[1:] - position_array[:-1]
-
-    # rotations = []
-    # for a, b in zip(finger_diff[1:], finger_diff[:-1]):
-    #     rotations.append(get_shortest_rotvec_between_two_vector2(a, b))
-
-    return [
-        get_shortest_rotvec_between_two_vector2(a, b) 
-        for a,b in zip(finger_diff[1:], finger_diff[:-1])
-    ]
 
 # @jit(nopython=True)
 def get_relative_angles_from_xy_plain(position_array):

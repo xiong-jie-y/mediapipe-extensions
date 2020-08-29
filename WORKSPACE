@@ -4,17 +4,23 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # Need to update mediapipe dependencies below when updating mediapipe.
-git_repository(
+#git_repository(
+#    name = "mediapipe",
+#    tag = "v0.7.9",
+#    remote = "git@github.com:google/mediapipe.git",
+#    patches = [
+#        "@//third_party:mediapipe_visibility_diff.diff",
+#    ],
+#    patch_args = [
+#        "-p1",
+#    ],
+#)
+
+local_repository(
     name = "mediapipe",
-    tag = "v0.7.9",
-    remote = "git@github.com:google/mediapipe.git",
-    patches = [
-        "@//third_party:mediapipe_visibility_diff.diff",
-    ],
-    patch_args = [
-        "-p1",
-    ],
+    path = "/home/ubuntu/mediapipe",
 )
+
 
 http_archive(
   name = "pybind11_bazel",

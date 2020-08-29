@@ -2,7 +2,7 @@
 import datetime
 from multiprocessing import process
 import time
-import IPython
+# import IPython
 
 import numpy as np
 from pika.head_gestures import YesOrNoEstimator
@@ -10,7 +10,7 @@ import pika.logging
 from collections import defaultdict
 import cv2
 
-from pika import graph_runner
+# from pika import graph_runner
 from pika.graph_runner_cpu import GraphRunnerCpu
 
 import click
@@ -27,7 +27,17 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
         print("Running on cpu mode")
         runner = GraphRunnerCpu(
             "graphs/face_mesh_desktop_live_any_model_cpu.pbtxt", 
-            ["multi_face_landmarks"]
+            ["multi_face_landmarks"],
+            {
+		# "detection_model_file_path": "modules/face/face_detection_front_128_float16_quant.tflite",
+		"detection_model_file_path": "modules/face/face_detection_front_128_full_integer_quant.tflite",
+		# "detection_model_file_path": "modules/face/face_detection_front_128_integer_quant.tflite",
+		# "detection_model_file_path": "mediapipe/models/face_detection_front.tflite",
+		# "landmark_model_file_path": "mediapipe/modules/face_landmark/face_landmark.tflite",
+		# "landmark_model_file_path": "modules/face/face_landmark_192_float16_quant.tflite",
+		"landmark_model_file_path": "modules/face/face_landmark_192_full_integer_quant.tflite",
+		# "landmark_model_file_path": "modules/face/face_landmark_192_integer_quant.tflite",
+	    }
         )
     else:
         runner = graph_runner.GraphRunner(
@@ -72,6 +82,10 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         processed_frame = runner.process_frame(gray)
+
+        orgHeight, orgWidth = processed_frame.shape[:2]
+        size = (int(orgWidth/2), int(orgHeight/2))
+        processed_frame = cv2.resize(processed_frame, size)
 
         if running_mode == "gpu":
             processed_frame = processed_frame.reshape((480, 640, 4))

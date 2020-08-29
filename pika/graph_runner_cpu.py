@@ -145,6 +145,9 @@ class GraphRunnerCpu:
       success, input_frame = cap.read()
       if not success:
         break
+      orgHeight, orgWidth = input_frame.shape[:2]
+      size = (int(orgWidth/2), int(orgHeight/2))
+      input_frame = cv2.resize(input_frame, size)
       output_frame = self._run_graph(input_frame[:, :, ::-1])
       cv2.imshow('MediaPipe upper body pose tracker', output_frame[:, :, ::-1])
       if cv2.waitKey(5) & 0xFF == 27:
