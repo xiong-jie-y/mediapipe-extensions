@@ -7,12 +7,14 @@ This repository is currently tested on Ubuntu 18.04 and python3.7.7.
 So it might work around these OS and python versions.
 
 * [requirements to run mediapipe](https://google.github.io/mediapipe/getting_started/install)
-* [pybind11](https://pybind11.readthedocs.io/en/stable/basics.html)
+  * (Running [facemesh](https://google.github.io/mediapipe/solutions/face_mesh.html) example for testing successful installation is recommended.)
+* protobuf-compiler
 
-For python
-```
-conda env create -f environment.yml
-```
+For python, please install following modules.
+* numpy
+* pyqt5
+* scipy
+* opencv > 3
 
 ## Getting the result in Python
 ### Python Graph Runner for GPU
@@ -32,9 +34,15 @@ Run the following command.
 
 ```sh
 cd modules/face
-wget -O - https://raw.githubusercontent.com/PINTO0309/PINTO_model_zoo/master/032_FaceMesh/02_weight_quantization/download.sh | bash
+wget -O - https://raw.githubusercontent.com/PINTO0309/PINTO_model_zoo/master/030_BlazeFace/05_float16_quantization/download_new.sh | bash
+wget -O - https://raw.githubusercontent.com/PINTO0309/PINTO_model_zoo/master/032_FaceMesh/05_float16_quantization/download.sh | bash
 cd ../../
 
+python3 tools/generate_proto.py
+
+# If you use non-system python, it is necessary to point to the path of python.
+# to make a python binding appropriately.
+# export PYTHON_BIN_PATH=$YOUR_PYTHON_PATH
 bash development/prepare_framework_bindings.sh
 python apps/run_face_mesh_live_cpu.py
 ```
@@ -44,8 +52,23 @@ python apps/run_face_mesh_live_cpu.py
 This app is for recognizing head gesture.
 Currently supported gesture is nodding and shaking head. ([Video](https://www.youtube.com/watch?v=PshPSOAfv0E))
 
-```sh                                
+```sh
+# To run on GPU.
 python setup.py build_ext
+GLOG_minloglevel=2 python apps/recognize_head_gesture.py
+
+# To run on CPU.
+cd modules/face
+wget -O - https://raw.githubusercontent.com/PINTO0309/PINTO_model_zoo/master/030_BlazeFace/05_float16_quantization/download_new.sh | bash
+wget -O - https://raw.githubusercontent.com/PINTO0309/PINTO_model_zoo/master/032_FaceMesh/05_float16_quantization/download.sh | bash
+cd ../../
+
+python3 tools/generate_proto.py
+
+# If you use non-system python, it is necessary to point to the path of python.
+# to make a python binding appropriately.
+# export PYTHON_BIN_PATH=$YOUR_PYTHON_PATH
+bash development/prepare_framework_bindings.sh
 GLOG_minloglevel=2 python apps/recognize_head_gesture.py
 ```
 
