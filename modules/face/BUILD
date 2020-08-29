@@ -19,6 +19,8 @@ mediapipe_simple_subgraph(
         "@mediapipe//mediapipe/calculators/tflite:tflite_tensors_to_detections_calculator",
         "@mediapipe//mediapipe/calculators/util:detection_letterbox_removal_calculator",
         "@mediapipe//mediapipe/calculators/util:non_max_suppression_calculator",
+        "@mediapipe//mediapipe/calculators/util:local_file_contents_calculator",
+        "@mediapipe//mediapipe/calculators/tflite:tflite_model_calculator",
     ],
 )
 
@@ -37,6 +39,8 @@ mediapipe_simple_subgraph(
         "@mediapipe//mediapipe/calculators/tflite:tflite_tensors_to_landmarks_calculator",
         "@mediapipe//mediapipe/calculators/util:landmark_projection_calculator",
         "@mediapipe//mediapipe/calculators/util:thresholding_calculator",
+        "@mediapipe//mediapipe/calculators/util:local_file_contents_calculator",
+        "@mediapipe//mediapipe/calculators/tflite:tflite_model_calculator",
     ],
 )
 

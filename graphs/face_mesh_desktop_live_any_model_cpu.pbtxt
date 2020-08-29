@@ -1,5 +1,10 @@
 # MediaPipe graph that performs face mesh with TensorFlow Lite on CPU.
 
+profiler_config {
+  trace_enabled: true
+  trace_log_interval_count: 200
+}
+
 # Input image. (ImageFrame)
 input_stream: "input_video"
 
@@ -46,6 +51,8 @@ node {
   calculator: "FaceLandmarkFrontCpuAnyModel"
   input_stream: "IMAGE:throttled_input_video"
   input_side_packet: "NUM_FACES:num_faces"
+  input_side_packet: "DETECTION_MODEL_PATH:detection_model_file_path"
+  input_side_packet: "LANDMARK_MODEL_PATH:landmark_model_file_path"
   output_stream: "LANDMARKS:multi_face_landmarks"
   output_stream: "ROIS_FROM_LANDMARKS:face_rects_from_landmarks"
   output_stream: "DETECTIONS:face_detections"
