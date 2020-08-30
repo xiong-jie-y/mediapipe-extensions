@@ -10,7 +10,7 @@ For python, please install following [modules](requirements.txt).
 pip install pikapi
 ```
 
-### To make your own perception pipeline in python
+### To build library from source.
 This repository is currently tested on Ubuntu 18.04 and python3.7.7.
 So it might work around these OS and python versions.
 
@@ -24,13 +24,17 @@ For python, please install following modules.
 * scipy
 * opencv > 3
 
-## Apps
+## Perception Algorithms
 ### Head Gesture Recognition
 This app is for recognizing head gesture.
 Currently supported gesture is nodding and shaking head. ([Video](https://www.youtube.com/watch?v=PshPSOAfv0E))
 
-#### If you didn't install pikapi with pip run following
+#### If you install the module with pip
+```sh
+GLOG_minloglevel=2 python apps/recognize_head_gesture.py
+```
 
+#### If want to compile from source.
 ```sh
 # To run on GPU.
 python setup.py build_ext
@@ -52,13 +56,9 @@ bash development/prepare_framework_bindings.sh
 GLOG_minloglevel=2 python apps/recognize_head_gesture.py
 ```
 
-#### If you install the module with pip
-```sh
-GLOG_minloglevel=2 python apps/recognize_head_gesture.py
-```
-
 ## Examples for mediapipe use in python
-This is the example of getting the face landmark results from graph.
+These are the example of getting the face landmark results from graph.
+
 ### Python Graph Runner for GPU
 Graph Runner API is an API with higher level than calculator framework API in mediapipe.
 This API is provided with python binding using pybind11 and it support GPU.
