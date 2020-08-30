@@ -12,7 +12,7 @@ import setuptools
 import setuptools.command.build_ext as build_ext
 import setuptools.command.install as install
 
-__version__ = '0.0.1dev0'
+__version__ = '0.0.1dev1'
 MP_ROOT_PATH = os.path.dirname(os.path.abspath(__file__))
 # ROOT_INIT_PY = os.path.join(MP_ROOT_PATH, '__init__.py')
 # if not os.path.exists(ROOT_INIT_PY):
