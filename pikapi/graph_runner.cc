@@ -12,6 +12,7 @@
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/gpu/gl_calculator_helper.h"
 #include "mediapipe/gpu/gpu_shared_data_internal.h"
+#include "mediapipe/framework/port/map_util.h"
 
 #include "mediapipe/framework/formats/landmark.pb.h"
 
@@ -24,7 +25,9 @@ constexpr char kOutputStream[] = "output_video";
 class GraphRunner
 {
 public:
-    GraphRunner(const std::string &graph_path, const std::vector<std::string> &channels)
+    GraphRunner(
+        const std::string &graph_path, const std::vector<std::string> &channels,
+        const pybind11::dict& input_side_packets)
     {
         std::string calculator_graph_config_contents;
         mediapipe::file::GetContents(
@@ -87,7 +90,14 @@ public:
             }
         }
 
-        auto start_run = graph.StartRun({});
+        std::map<std::string, mediapipe::Packet> input_side_packet_map;
+        for (const auto& kv_pair : input_side_packets) {
+          InsertIfNotPresent(&input_side_packet_map,
+                             kv_pair.first.cast<std::string>(),
+                             kv_pair.second.cast<mediapipe::Packet>());
+        }
+
+        auto start_run = graph.StartRun(input_side_packet_map);
         if (!start_run.ok())
             LOG(ERROR) << start_run;
     }
@@ -318,7 +328,7 @@ private:
 PYBIND11_MODULE(graph_runner, m)
 {
     py::class_<GraphRunner>(m, "GraphRunner")
-        .def(py::init<const std::string &, const std::vector<std::string> &>())
+        .def(py::init<const std::string &, const std::vector<std::string> &, const pybind11::dict&>())
         .def("process_frame", &GraphRunner::ProcessFrame)
         .def("get_normalized_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::NormalizedLandmarkList>>)
         .def("get_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::LandmarkList>>);

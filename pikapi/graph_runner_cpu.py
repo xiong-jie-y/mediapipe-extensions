@@ -37,6 +37,8 @@ import mediapipe.python as mp
 # resources dependency
 from mediapipe.framework.formats import landmark_pb2
 
+import pikapi.mediapipe_util as pmu
+
 # Input and output stream names.
 INPUT_VIDEO = 'input_video'
 OUTPUT_VIDEO = 'output_video'
@@ -67,15 +69,8 @@ class GraphRunnerCpu:
     self._output_channels = output_channels
     for stream_name in [OUTPUT_VIDEO] + output_channels:
       self._graph.observe_output_stream(stream_name, self._assign_packet)
-    self._graph.start_run(input_side_packets=self.__create_packet_map(input_configs))
+    self._graph.start_run(input_side_packets=pmu.create_packet_map(input_configs))
     self._channel_outputs = {}
-
-  def __create_packet_map(self, input_configs):
-    packet_map = {}
-    for key, value in input_configs.items():
-      if isinstance(value, str):
-        packet_map[key] = mp.packet_creator.create_string(value)
-    return packet_map
 
   def run(
       self,

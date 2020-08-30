@@ -14,6 +14,9 @@ from pikapi.graph_runner_cpu import GraphRunnerCpu
 
 import click
 
+import pikapi
+import pikapi.mediapipe_util as pmu
+
 @click.command()
 @click.option('--camera-id', default=0, type=int)
 @click.option('--running_mode', default="gpu")
@@ -28,22 +31,26 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
             "graphs/face_mesh_desktop_live_any_model_cpu.pbtxt", 
             ["multi_face_landmarks"], 
             {
-                # "detection_model_file_path": "modules/face/face_detection_front_128_float16_quant.tflite",
-                "detection_model_file_path": "modules/face/face_detection_front_128_full_integer_quant.tflite",
+                "detection_model_file_path": "models/face_detection_front_128_float16_quant.tflite",
+                # "detection_model_file_path": "modules/face/face_detection_front_128_full_integer_quant.tflite",
                 # "detection_model_file_path": "modules/face/face_detection_front_128_integer_quant.tflite",
                 # "detection_model_file_path": "mediapipe/models/face_detection_front.tflite",
                 # "landmark_model_file_path": "mediapipe/modules/face_landmark/face_landmark.tflite",
-                # "landmark_model_file_path": "modules/face/face_landmark_192_float16_quant.tflite",
-                "landmark_model_file_path": "modules/face/face_landmark_192_full_integer_quant.tflite",
+                "landmark_model_file_path": "models/face_landmark_192_float16_quant.tflite",
+                # "landmark_model_file_path": "modules/face/face_landmark_192_full_integer_quant.tflite",
                 # "landmark_model_file_path": "modules/face/face_landmark_192_integer_quant.tflite",
             }
         )
     else:
         # Importing here to avoid compile this module, when using cpu.
-        from pikapi import graph_runner
-        runner = graph_runner.GraphRunner(
-            "mediapipe/graphs/face_mesh/face_mesh_desktop_live_gpu.pbtxt", [
-                "multi_face_landmarks"]
+        import pikapi.graph_runner
+        runner = pikapi.graph_runner.GraphRunner(
+            "pikapi/graphs/face_mesh_desktop_live_any_model.pbtxt", [
+                "multi_face_landmarks"], 
+                pmu.create_packet_map({
+                "detection_model_file_path": pikapi.get_data_path("models/face_detection_front.tflite"),
+                "landmark_model_file_path": pikapi.get_data_path("models/face_landmark.tflite"),
+            })
         )
 
     log = pikapi.logging.HumanReadableLog()
@@ -59,14 +66,14 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     labels = []
 
-    import apps.controll_window
+    import pikapi.gui.controll_window
     from multiprocessing import Process
 
     from multiprocessing import Value
 
     label_state = Value('i', 0)
     action = Value('i', 0)
-    p = Process(target=apps.controll_window.create_window, args=(label_state, action))
+    p = Process(target=pikapi.gui.controll_window.create_window, args=(label_state, action))
     p.start()
 
     print("start")
