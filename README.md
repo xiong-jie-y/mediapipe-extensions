@@ -4,8 +4,11 @@ The name comes from capitals of "Perception toward Interaction with [Kawaii](htt
 
 ## Requirements
 ### For use perception algorithms
-For python, please install following modules.
-[requirements.txt]
+For python, please install following [modules](requirements.txt).
+
+```sh
+pip install pikapi
+```
 
 ### To make your own perception pipeline in python
 This repository is currently tested on Ubuntu 18.04 and python3.7.7.
