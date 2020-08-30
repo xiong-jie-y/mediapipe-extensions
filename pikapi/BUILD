@@ -46,6 +46,6 @@ pybind_extension(
         "@mediapipe//mediapipe/calculators/core:constant_side_packet_calculator",
         "@mediapipe//mediapipe/calculators/core:flow_limiter_calculator",
         # "@mediapipe//mediapipe/graphs/face_mesh:desktop_live_gpu_calculators"
-        "//cpp/calculators:tensor_remap_calculator",
+        "//cpp/mp_extensions/calculators:tensor_remap_calculator",
     ],
 )

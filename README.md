@@ -92,5 +92,15 @@ python apps/run_face_mesh_live_cpu.py
 ## Development Code
 Code that is used to develop algorithms are included under `/development`.
 
+Directory structure
+
+```
+- apps: Sample app to use perception algorithms and lower apis.
+- cpp: C++ code that is eventually built as .so
+- development: Code for developing and analyzing algorithms.
+- pikapi: All the python code and data that should be included in python package.
+- tools: Tools that supports other than developing algorithms.
+```
+
 ## License
 * [Apache License 2](https://www.apache.org/licenses/LICENSE-2.0)
