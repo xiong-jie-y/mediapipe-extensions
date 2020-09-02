@@ -305,6 +305,48 @@ public:
         return point_3d_lists;
     }
 
+    template <typename T>
+    std::vector<Eigen::Vector3d> GetPoint3DListFromLandmark(std::string name)
+    {
+        if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
+            std::vector<Eigen::Vector3d> a(0);
+            return a;
+        }
+
+        if (!channel_name_to_pocket_[name]) {
+            std::vector<Eigen::Vector3d> a(0);
+            return a;
+        }
+
+        const auto &landmark_list = channel_name_to_pocket_[name]->Get<T>();
+
+        auto dim_2 = landmark_list.landmark().size();
+
+        std::vector<Eigen::Vector3d> point_3d_lists(dim_2);
+
+        for (size_t j = 0; j < dim_2; j++)
+        {
+            const auto &landmark_point = landmark_list.landmark().at(j);
+            point_3d_lists[j] = Eigen::Vector3d(landmark_point.x(), landmark_point.y(), landmark_point.z());
+        }
+
+        return point_3d_lists;
+    }
+
+
+    py::object GetFloat(std::string name)
+    {
+        if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
+            return py::cast<py::none>(Py_None);
+        }
+
+        if (!channel_name_to_pocket_[name]) {
+            return py::cast<py::none>(Py_None);
+        }
+
+        return py::cast(channel_name_to_pocket_[name]->Get<float>());
+    }
+
     // template <typename T>
     // std::string GetProtobufObject(std::string name)
     // {
@@ -331,6 +373,8 @@ PYBIND11_MODULE(graph_runner, m)
         .def(py::init<const std::string &, const std::vector<std::string> &, const pybind11::dict&>())
         .def("process_frame", &GraphRunner::ProcessFrame)
         .def("get_normalized_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::NormalizedLandmarkList>>)
+        .def("get_normalized_landmark_list", &GraphRunner::GetPoint3DListFromLandmark<mediapipe::NormalizedLandmarkList>)
+        .def("get_float", &GraphRunner::GetFloat)
         .def("get_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::LandmarkList>>);
     // .def("get_landmark_lists_pb", &GraphRunner::GetProtobufObject<std::vector<mediapipe::NormalizedLandmarkList>>);
     // .def("process_rgbd_frame", &GraphRunner::ProcessRGBDFrame);
