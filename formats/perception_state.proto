@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package pikapi;
+
+message Vector {
+    float x = 1;
+    float y = 2;
+    float z = 3;
+}
+
+message Face {
+    Vector center = 1;
+}
+
+message Person {
+    Face face = 1; 
+}
+
+message PerceptionState {
+    repeated Person people = 1;
+}
