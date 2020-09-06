@@ -1,5 +1,5 @@
 """This is the perception server that accept RGBD camera input 
-and output data through ipc (currently zeromq) in the proto message format.
+and output data through ipc (currently zeromq) in the proto message format..
 """
 import IPython
 import cv2
@@ -18,7 +18,7 @@ import pyrealsense2 as rs
 def get_intrinsic(width, height):
     pipeline = rs.pipeline()
     config = rs.config()
-    config.enable_stream(rs.stream.color, width, heihgt, rs.format.bgr8, 30)
+    config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, 30)
     # pipeline.stop()
     cfg = pipeline.start(config)
     # Fetch stream profile for depth stream
