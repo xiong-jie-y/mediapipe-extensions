@@ -2,6 +2,8 @@
 This repository contains perception algorithms for interaction with agetns.
 The name comes from capitals of "Perception toward Interaction with [Kawaii](https://en.wikipedia.org/wiki/Kawaii) Agents and Pretty Individuals". My focus is making the world full of kawaii characters.
 
+![new_assets_web.gif](https://xiong-jie-y.github.io/ai-yome-project/new_assets_web.gif)
+
 This project is UNDER ACTIVE DEVELOPMENT,
 so if you need some help, feel free to post a issue.
 If possible, please write brief project description where you use this algorithm.
