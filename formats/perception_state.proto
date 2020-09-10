@@ -12,8 +12,19 @@ message Face {
     Vector center = 1;
 }
 
+message Hand {
+    enum GestureType {
+        NONE = 0;
+        PIECE = 1;
+        WAVING = 2;
+    }
+    GestureType gesture_type = 1;
+    repeated string gesture_names = 2;
+}
+
 message Person {
     Face face = 1; 
+    repeated Hand hands = 2;
 }
 
 message PerceptionState {

@@ -347,6 +347,21 @@ public:
         return py::cast(channel_name_to_pocket_[name]->Get<float>());
     }
 
+    std::vector<std::string> GetStringArray(std::string name)
+    {
+        if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
+            std::vector<std::string> a(0);
+            return a;
+        }
+
+        if (!channel_name_to_pocket_[name]) {
+            std::vector<std::string> a(0);
+            return a;
+        }
+
+        return channel_name_to_pocket_[name]->Get<std::vector<std::string>>();
+    }
+
     // template <typename T>
     // std::string GetProtobufObject(std::string name)
     // {
@@ -375,6 +390,7 @@ PYBIND11_MODULE(graph_runner, m)
         .def("get_normalized_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::NormalizedLandmarkList>>)
         .def("get_normalized_landmark_list", &GraphRunner::GetPoint3DListFromLandmark<mediapipe::NormalizedLandmarkList>)
         .def("get_float", &GraphRunner::GetFloat)
+        .def("get_string_array", &GraphRunner::GetStringArray)
         .def("get_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::LandmarkList>>);
     // .def("get_landmark_lists_pb", &GraphRunner::GetProtobufObject<std::vector<mediapipe::NormalizedLandmarkList>>);
     // .def("process_rgbd_frame", &GraphRunner::ProcessRGBDFrame);
