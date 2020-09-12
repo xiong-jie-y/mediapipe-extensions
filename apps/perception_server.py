@@ -499,11 +499,11 @@ class FaceRecognizer:
             center[1] += 150
             # print(center)
             # print(center[2])
-            screen_to_head = center[2]0
+            screen_to_head = center[2]
             center[2] += SCREEN_TO_CHAR
 
             import math
-            # cam_x = math.tan(math.atan2(center[], center[2])) * center[0]
+            # cam_x = math.tan(math.atan2(center[0], center[2])) * center[0]
             cam_x = center[0] / center[2] * SCREEN_TO_CHAR
             cam_y = center[1] / center[2] * SCREEN_TO_CHAR
             camera_direction = np.array([0, 848, -SCREEN_TO_CHAR]) - face_center_in_unity
