@@ -18,6 +18,17 @@ pybind_extension(
 )
 
 pybind_extension(
+    name = "orientation_estimator",
+    srcs = [
+        "orientation_estimator.cc",
+    ],
+    deps = [
+        "@eigen_archive//:eigen",
+    ],
+)
+
+
+pybind_extension(
     name = "_framework_bindings",
     srcs = ["framework_bindings.cc"],
     linkopts = [

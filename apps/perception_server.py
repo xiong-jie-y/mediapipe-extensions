@@ -1,6 +1,11 @@
 """This is the perception server that accept RGBD camera input 
 and output data through ipc (currently zeromq) in the proto message format..
 """
+import time
+
+from scipy.spatial.transform.rotation import Rotation
+import pikapi.protos.perception_state_pb2 as ps
+from pikapi.head_gestures import YesOrNoEstimator
 import logging
 from typing import List
 import IPython
@@ -34,15 +39,16 @@ def get_intrinsic_matrix(camera_id):
     cap = cv2.VideoCapture(camera_id)
     width = cap.get(3)
     height = cap.get(4)
+    print(width, height)
     cap.release()
 
-    return get_intrinsic(int(width), int(height))
+    # return get_intrinsic(int(width), int(height))
+    return get_intrinsic(int(width), 360)
 
 # def face_mesh_to_camera_coordinate(face_iris_landmark, left_mm, right_mm):
 #     import IPython; IPython.embed()
 #     left_center_iris = face_iris_landmark[468, :]
 #     right_center_iris = face_iris_landmark[468 + 5, :]
-
 
 #     left_relatives = np.copy(face_iris_landmark)
 #     left_relatives[:, 2] =  left_relatives[:, 2] - left_center_iris[2] + left_mm
@@ -86,7 +92,7 @@ def get_camera_coord_landmarks(
 
     assert len(points_c) == len(normalized_landmark_list)
 
-    return np.array(points_c)
+    return np.array(points_c, dtype=np.float)
 
 
 def get_face_center_3d(
@@ -112,6 +118,7 @@ def project_point(point, width, height, intrinsic_matrix):
         int(point[1] * intrinsic_matrix.fy / point[2] + intrinsic_matrix.ppy)
     ]
 
+
 WRIST_IDS = [0]
 
 FINGER_IDS = dict(
@@ -132,18 +139,19 @@ FINGER_IDS = dict(
     ]
 )
 
+
 def get_shortest_rotvec_between_two_vector(a, b):
     """Get shortest rotation between two vectors.
 
     Args:
         a - starting vector of rotation
         b - destination vector of rotation
-    
+
     Returns:
         rotation_axis - axis of rotation
         theta - theta of rotation (in radian)
     """
-    
+
     a = a / np.linalg.norm(a)
     b = b / np.linalg.norm(b)
 
@@ -158,6 +166,7 @@ def get_shortest_rotvec_between_two_vector(a, b):
     rotation_axis = np.cross(a, b)
 
     return rotation_axis, theta
+
 
 def get_relative_angles_from_xy_plain(position_array):
     """Get relative angles from xy plain.
@@ -177,9 +186,10 @@ def get_relative_angles_from_xy_plain(position_array):
 
     # st.write(finger_diff)
     return [
-        get_shortest_rotvec_between_two_vector(a, b) 
-        for a,b in zip(finger_diff[1:], finger_diff[:-1])
+        get_shortest_rotvec_between_two_vector(a, b)
+        for a, b in zip(finger_diff[1:], finger_diff[:-1])
     ]
+
 
 def get_relative_angles_from_finger_base(landmark, finger_ids):
     # finger_pos = landmark[WRIST_IDS + finger_ids]
@@ -191,9 +201,17 @@ def get_relative_angles_from_finger_base(landmark, finger_ids):
     #     rotations.append(get_shortest_rotvec_between_two_vector2(a, b))
 
     return [
-        get_shortest_rotvec_between_two_vector(a, b) 
-        for a,b in zip(finger_diff[1:], finger_diff[:-1])
+        get_shortest_rotvec_between_two_vector(a, b)
+        for a, b in zip(finger_diff[1:], finger_diff[:-1])
     ]
+
+def depth_from_maybe_points_3d(hand_landmark_points):
+    zs = hand_landmark_points[:, 2]
+    zs = zs[~np.isnan(zs)]
+    if len(zs) == 0:
+        return None
+
+    return np.mean(zs)
 
 class HandGestureRecognizer():
     def __init__(self, intrinsic_matrix):
@@ -207,20 +225,21 @@ class HandGestureRecognizer():
 
         self.record_trajectory = False
 
-    def _get_achimuitehoi_gesture(self, landmark_list: np.ndarray, 
-        width: int, height: int, visualize_image: np.ndarray, min_x: int, min_y: int) -> str:
+    def _get_achimuitehoi_gesture(self, landmark_list: np.ndarray,
+                                  width: int, height: int, visualize_image: np.ndarray, min_x: int, min_y: int) -> str:
         denormalized_landmark = np.copy(landmark_list)
-        denormalized_landmark[:,0] *= width
-        denormalized_landmark[:,2] *= width
-        denormalized_landmark[:,1] *= height
+        denormalized_landmark[:, 0] *= width
+        denormalized_landmark[:, 2] *= width
+        denormalized_landmark[:, 1] *= height
 
         max_angles = {}
         for finger_name in FINGER_IDS.keys():
             # rotations = get_relative_angles_from_xy_plain(
             #     landmark_list[FINGER_IDS[finger_name]])
-            rotations = get_relative_angles_from_finger_base(landmark_list, FINGER_IDS[finger_name])
+            rotations = get_relative_angles_from_finger_base(
+                landmark_list, FINGER_IDS[finger_name])
             max_angles[finger_name] = np.max([rot[1] for rot in rotations])
-        
+
         closes = ['middle_finger', 'ring_finger', 'pinky_finger']
         opens = ['index_finger']
 
@@ -236,19 +255,18 @@ class HandGestureRecognizer():
             if max_angles[finger_name] < OPEN_THRESH:
                 pointing_something = False
 
-
         index_fingers = landmark_list[FINGER_IDS['index_finger']]
         pointing_dir = index_fingers[-1] - index_fingers[0]
         pointing_dir = pointing_dir / np.linalg.norm(pointing_dir)
 
         direction = None
         if abs(pointing_dir[2]) > abs(pointing_dir[0]) and \
-            abs(pointing_dir[2]) > abs(pointing_dir[1]):
+                abs(pointing_dir[2]) > abs(pointing_dir[1]):
             direction = "camera"
         else:
             # TODO: Need to fix
             if (abs(pointing_dir[0]) < 0.07 and abs(pointing_dir[1]) < 0.07):
-                direction="camera"
+                direction = "camera"
             else:
                 if abs(pointing_dir[1]) > abs(pointing_dir[0]):
                     # left from the camera
@@ -267,22 +285,23 @@ class HandGestureRecognizer():
                         direction = "ambiguous"
 
         assert direction is not None
-    
+
         state_tag = f"pointing_to_{direction}" if pointing_something else "not_pointing"
-        cv2.putText(visualize_image, \
-            state_tag, 
-            (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 2.0,
-            (0, 0, 255), 3, cv2.LINE_AA)
+        cv2.putText(visualize_image,
+                    state_tag,
+                    (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 2.0,
+                    (0, 0, 255), 3, cv2.LINE_AA)
 
         pressed_key = cv2.waitKey(2)
         if pressed_key == ord("b"):
             if state_tag == "pointing_to_up":
-                import IPython; IPython.embed()
+                import IPython
+                IPython.embed()
 
         return state_tag
 
-    def _accumulate_trajectory(self, landmark_list: np.ndarray, 
-        width: int, height: int, visualize_image: np.ndarray):
+    def _accumulate_trajectory(self, landmark_list: np.ndarray,
+                               width: int, height: int, visualize_image: np.ndarray):
         pressed_key = cv2.waitKey(2)
         if pressed_key == ord("t"):
             self.logger.info("Start Logging")
@@ -290,12 +309,13 @@ class HandGestureRecognizer():
             self.record_trajectory = True
 
         if self.record_trajectory:
-            self.trajectory.append(landmark_list[FINGER_IDS['index_finger']][-1])
+            self.trajectory.append(
+                landmark_list[FINGER_IDS['index_finger']][-1])
 
             for first, second in zip(self.trajectory[:-1], self.trajectory[1:]):
                 cv2.line(visualize_image, (int(first[0] * width), int(
                     first[1] * height)), (int(second[0] * width), int(
-                    second[1] * height)), (255, 255, 255), 5)
+                        second[1] * height)), (255, 255, 255), 5)
 
     def get_gestures(self,
                      rgb_image: np.ndarray, depth_image: np.ndarray,
@@ -318,11 +338,11 @@ class HandGestureRecognizer():
 
             # Filter conversing person's hand.
             zs = hand_landmark_points[:, 2]
-
             zs = zs[zs != None]
             if len(zs) == 0:
                 continue
             mean_depth = np.mean(zs)
+
             if mean_depth > 1500:
                 for i, point in enumerate(hand_landmark_list):
                     cv2.circle(visualize_image, (int(point[0] * width), int(
@@ -345,9 +365,187 @@ class HandGestureRecognizer():
 
             effective_gesture_texts.append(self._get_achimuitehoi_gesture(
                 hand_landmark_list, width, height, visualize_image, min_x, min_y + 50))
-            self._accumulate_trajectory(hand_landmark_list, width, height, visualize_image)
+            self._accumulate_trajectory(
+                hand_landmark_list, width, height, visualize_image)
 
         return effective_gesture_texts
+
+class IMUInfo:
+    def __init__(self, acc: np.ndarray):
+        self.acc = acc
+
+
+class FaceRecognizer:
+    def __init__(self, intrinsic_matrix):
+        focal_length = intrinsic_matrix.fx
+        self.runner = pikapi.graph_runner.GraphRunner(
+            "pikapi/graphs/iris_tracking_gpu.pbtxt", [
+                "face_landmarks_with_iris", "left_iris_depth_mm", "right_iris_depth_mm"],
+            pmu.create_packet_map({"focal_length_pixel": focal_length})
+        )
+        self.intrinsic_matrix = intrinsic_matrix
+        self.yes_or_no_estimator = YesOrNoEstimator()
+        self.previous = None
+
+    # def _get_eye_direction_and_position(face_iris_landmark):
+    #     import IPython; IPython.embed()
+    #     left_center_iris = face_iris_landmark[468, :]
+    #     right_center_iris = face_iris_landmark[468 + 5, :]
+
+    def _adjust_by_imu(self, points: np.ndarray, imu_info: IMUInfo) -> np.ndarray:
+        rot = get_shortest_rotvec_between_two_vector(np.array([0, -1.0, 0]), imu_info.acc)
+        if rot is None:
+            return points
+
+        rotation_axis, theta = rot
+        rot_sci = Rotation.from_rotvec(rotation_axis * theta)
+
+        # import IPython; IPython.embed()
+        return rot_sci.inv().apply(points)
+
+    def get_face_state(self,
+                       rgb_image: np.ndarray, depth_image: np.ndarray,
+                       visualize_image: np.ndarray, imu_info: IMUInfo) -> ps.Face:
+        current_time = time.time()
+        width = rgb_image.shape[1]
+        height = rgb_image.shape[0]
+
+        self.runner.process_frame(rgb_image)
+
+        multi_face_landmarks = [self.runner.get_normalized_landmark_list(
+            "face_landmarks_with_iris")]
+        left_mm = self.runner.get_float("left_iris_depth_mm")
+        right_mm = self.runner.get_float("right_iris_depth_mm")
+        if left_mm is not None and right_mm is not None:
+            # cv2.putText(blank_image, str(int((left_mm + right_mm)/2)) + "[mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
+            #     (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.putText(visualize_image, f"Left: {int(left_mm)} [mm]", (0, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
+                        (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(visualize_image, f"Right: {int(right_mm)} [mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
+                        (255, 255, 255), 2, cv2.LINE_AA)
+
+        center = None
+        if len(multi_face_landmarks) != 0 and (
+            left_mm is not None and right_mm is not None
+        ):
+            face_landmark = np.array(multi_face_landmarks[0])
+            from pikapi.logging import TimestampedData
+            if len(face_landmark) != 0:
+                min_x = int(min(face_landmark[:, 0]) * width)
+                min_y = int(min(face_landmark[:, 1]) * height)
+                state = self.yes_or_no_estimator.get_state(
+                    TimestampedData(current_time, multi_face_landmarks))
+                if state == 1:
+                    state = "Yes"
+                elif state == -1:
+                    state = "No"
+                else:
+                    state = "No Gesture"
+
+                cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
+                            (255, 255, 255), 1, cv2.LINE_AA)
+
+                # print(face_mesh_to_camera_coordinate(face_landmark, left_mm, right_mm))
+                mean_depth = depth_from_maybe_points_3d(
+                    get_camera_coord_landmarks(face_landmark, width, height, depth_image, self.intrinsic_matrix))
+                # if mean_depth is None:
+                
+
+                # import IPython; IPython.embed()
+                # center = get_face_center_3d(
+                #     face_landmark, left_mm, right_mm, width, height, self.intrinsic_matrix)
+                center = get_face_center_3d(
+                    face_landmark, mean_depth, mean_depth, width, height, self.intrinsic_matrix)
+                # This center will have a y-axis down side.
+                # if center[2]:
+                # import IPython; IPython.embed()
+
+                x, y = project_point(
+                    center, width, height, self.intrinsic_matrix)
+                    
+                # print(center)
+                # print(x,y)
+                
+                # if mean_depth < 100:
+                #    import IPython; IPython.embed()
+                
+                # mean depth
+                for point in face_landmark:
+                    cv2.circle(visualize_image, (int(point[0] * rgb_image.shape[1]), int(
+                        point[1] * rgb_image.shape[0])), 3, (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
+                cv2.circle(visualize_image, (x, y), 3, (0, 0, 255),
+                           thickness=-1, lineType=cv2.LINE_AA)
+                # print(np.mean([point[2] for point in face_landmark]))
+
+        eye_camera_position = None
+        camera_pose = None
+        character_pose = None
+        # def array_to_vec(array, previous):
+        if center is not None:
+            SCREEN_TO_CHAR = 620
+
+            # Calculate face center position in unity.
+            face_center_in_unity = np.copy(center)
+            face_center_in_unity = self._adjust_by_imu(np.array([face_center_in_unity]), imu_info)[0]
+
+            # From camera coordinate to unity global coordinate.
+            face_center_in_unity[0] = -face_center_in_unity[0]
+            face_center_in_unity[1] = 848 - (face_center_in_unity[1] + 150)
+            face_center_in_unity[2] += 620
+            face_center_in_unity[2] = -face_center_in_unity[2]
+            # print(face_center_in_unity)
+
+            center = self._adjust_by_imu(np.array([center]), imu_info)[0]
+            center[1] += 150
+            # print(center)
+            # print(center[2])
+            screen_to_head = center[2]0
+            center[2] += SCREEN_TO_CHAR
+
+            import math
+            # cam_x = math.tan(math.atan2(center[], center[2])) * center[0]
+            cam_x = center[0] / center[2] * SCREEN_TO_CHAR
+            cam_y = center[1] / center[2] * SCREEN_TO_CHAR
+            camera_direction = np.array([0, 848, -SCREEN_TO_CHAR]) - face_center_in_unity
+            # camera_direction_in_unity = np.array([
+            #     -camera_direction[0], 
+            #     -camera_direction[1],
+            #     -camera_direction[2]
+            #     ])
+            print(camera_direction)
+            rot = get_shortest_rotvec_between_two_vector(np.array([0,0,1]), camera_direction)
+            if rot is not None:
+                # import IPython; IPython.embed()
+                
+                axis, theta = rot
+                pose = Rotation.from_rotvec(axis * theta).as_quat()
+                camera_pose = ps.Quaternion(x=pose[0], y=pose[1], z=pose[2], w=pose[3])
+                # char_pose = Rotation.from_rotvec(axis * theta).inv().as_quat()
+                print(center)
+                xz_theta = math.atan2(-center[0], center[2])
+                print(xz_theta)
+                char_pose = Rotation.from_rotvec(np.array([0, 1, 0]) * -xz_theta).inv().as_quat()
+                character_pose = ps.Quaternion(
+                    x=char_pose[0], y=char_pose[1], z=char_pose[2], w=char_pose[3])
+                print(axis, theta)
+                # print(character_pose)
+                # import IPython; IPython.embed()
+                
+            eye_camera_position = ps.Vector(x=-cam_x/1000.0, y=-cam_y/1000.0, z=0.0)
+        
+            # print(eye_camera_position)
+            # cam_y = math.tan(math.atan2(center[1], center[2])) * center[1]
+
+        if center is None:
+            vec = self.previous
+        else:
+            vec = ps.Vector(x=center[0], y=-center[1], z=center[2])
+            self.previous = vec
+
+        return ps.Face(
+            center=vec, eye_camera_position=eye_camera_position, eye_camera_pose=camera_pose,
+            character_pose=character_pose
+        )
 
 
 @click.command()
@@ -357,26 +555,17 @@ class HandGestureRecognizer():
 @click.option('--demo-mode', is_flag=True)
 def cmd(camera_id, relative_depth, use_realsense, demo_mode):
     intrinsic_matrix = get_intrinsic_matrix(camera_id)
-    focal_length = intrinsic_matrix.fx
 
-    runner = pikapi.graph_runner.GraphRunner(
-        "pikapi/graphs/iris_tracking_gpu.pbtxt", [
-            "face_landmarks_with_iris", "left_iris_depth_mm", "right_iris_depth_mm"],
-        pmu.create_packet_map({"focal_length_pixel": focal_length})
-    )
+    face_recognizer = FaceRecognizer(intrinsic_matrix)
     hand_gesture_recognizer = HandGestureRecognizer(intrinsic_matrix)
     pose_recognizer = pikapi.graph_runner.GraphRunner(
         "pikapi/graphs/upper_body_pose_tracking_gpu.pbtxt", [
             "pose_landmarks"], {})
 
-
     import zmq
-
     context = zmq.Context()
     publisher = context.socket(zmq.PUB)
     publisher.bind("tcp://127.0.0.1:9998")
-
-    import pikapi.protos.perception_state_pb2 as ps
 
     # Alignオブジェクト生成
     config = rs.config()
@@ -386,20 +575,23 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
     config.enable_stream(rs.stream.color, 640, 360, rs.format.bgr8, 60)
     #
     config.enable_stream(rs.stream.depth, 640, 360, rs.format.z16, 60)
+    config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 250)
+    config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
 
     pipeline = rs.pipeline()
     profile = pipeline.start(config)
     align_to = rs.stream.color
     align = rs.align(align_to)
 
-    import time
-    from pikapi.head_gestures import YesOrNoEstimator
-    yes_or_no_estimator = YesOrNoEstimator()
-
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     logger = logging.getLogger(__name__)
 
-    previous = None
+    from pikapi.orientation_estimator import RotationEstimator
+
+    rotation_estimator = RotationEstimator(0.98, True)
+
+    from collections import deque
+    acc_vectors = deque([])
     try:
         while(True):
             current_time = time.time()
@@ -409,6 +601,25 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             depth_frame = aligned_frames.get_depth_frame()
             if not depth_frame or not color_frame:
                 continue
+
+            # import IPython; IPython.embed()
+
+            acc = frames[2].as_motion_frame().get_motion_data()
+            gyro = frames[3].as_motion_frame().get_motion_data()
+            timestamp = frames[3].as_motion_frame().get_timestamp()
+            rotation_estimator.process_gyro(np.array([gyro.x, gyro.y, gyro.z]), timestamp)
+            rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
+            theta = rotation_estimator.get_theta()
+            acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
+            if len(acc_vectors) > 200:
+                acc_vectors.popleft()
+            
+            acc = np.mean(acc_vectors, axis=0)
+            # print(acc)
+            # print(np.array([acc.x, acc.y, acc.z]))
+            
+            # print(theta)
+            
             frame = np.asanyarray(color_frame.get_data())
             depth_image = np.asanyarray(depth_frame.get_data())
 
@@ -423,44 +634,31 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             # depth_image[depth_image == 0] = 0
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            processed_frame = runner.process_frame(gray)
-            processed_frame = processed_frame.reshape(
-                (frame.shape[0], frame.shape[1], 4))
+
             width = frame.shape[1]
             height = frame.shape[0]
-            processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_RGB2BGR)
 
-            # multi_face_landmarks = runner.get_normalized_landmark_lists(
-            #     "multi_face_landmarks")
+            imu_info = IMUInfo(acc)
 
-            # print(processed_frame.shape)
-            blank_image = np.zeros(processed_frame.shape, np.uint8)
+            # Prepare depth image for dispaly.
             depth_image_cp = np.copy(depth_image)
             depth_image_cp[depth_image_cp > 2500] = 0
             depth_image_cp[depth_image_cp == 0] = 0
             depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(
                 depth_image_cp, alpha=0.08), cv2.COLORMAP_JET)
             # depth_colored = cv2.convertScaleAbs(depth_image, alpha=0.08)
-            
+
             if demo_mode:
                 target_image = depth_colored
             else:
                 target_image = frame
 
-            multi_face_landmarks = [runner.get_normalized_landmark_list(
-                "face_landmarks_with_iris")]
-            left_mm = runner.get_float("left_iris_depth_mm")
-            right_mm = runner.get_float("right_iris_depth_mm")
-            if left_mm is not None and right_mm is not None:
-                # cv2.putText(blank_image, str(int((left_mm + right_mm)/2)) + "[mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
-                #     (255, 255, 255), 1, cv2.LINE_AA)
-                cv2.putText(target_image, f"Left: {int(left_mm)} [mm]", (0, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
-                            (255, 255, 255), 2, cv2.LINE_AA)
-                cv2.putText(target_image, f"Right: {int(right_mm)} [mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
-                            (255, 255, 255), 2, cv2.LINE_AA)
+            face_state = face_recognizer.get_face_state(
+                gray, depth_image, target_image, imu_info)
 
             effective_gesture_texts = \
-                hand_gesture_recognizer.get_gestures(gray, depth_image, target_image)
+                hand_gesture_recognizer.get_gestures(
+                    gray, depth_image, target_image)
 
             pose_recognizer.process_frame(gray)
             pose_landmark_list = np.array(
@@ -477,64 +675,17 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
                         point[1] * frame.shape[0])), 3, (255, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
                 # else:
                 #     print(mean_depth)
-            center = None
-            if len(multi_face_landmarks) != 0 and (
-                left_mm is not None and right_mm is not None
-            ):
-                face_landmark = np.array(multi_face_landmarks[0])
-                from pikapi.logging import TimestampedData
-                if len(face_landmark) != 0:
-                    min_x = int(min(face_landmark[:, 0]) * frame.shape[1])
-                    min_y = int(min(face_landmark[:, 1]) * frame.shape[0])
-                    state = yes_or_no_estimator.get_state(
-                        TimestampedData(current_time, multi_face_landmarks))
-                    if state == 1:
-                        state = "Yes"
-                    elif state == -1:
-                        state = "No"
-                    else:
-                        state = "No Gesture"
-
-                    cv2.putText(target_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
-                                (255, 255, 255), 1, cv2.LINE_AA)
-
-                    # print(face_mesh_to_camera_coordinate(face_landmark, left_mm, right_mm))
-                    center = get_face_center_3d(
-                        face_landmark, left_mm, right_mm, width, height, intrinsic_matrix)
-                    # This center will have a y-axis down side.
-                    x, y = project_point(
-                        center, width, height, intrinsic_matrix)
-                    # print(center)
-                    # print(x,y)
-
-                    for point in face_landmark:
-                        cv2.circle(target_image, (int(point[0] * frame.shape[1]), int(
-                            point[1] * frame.shape[0])), 3, (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
-                    cv2.circle(target_image, (x, y), 3, (0, 0, 255),
-                               thickness=-1, lineType=cv2.LINE_AA)
-                    # print(np.mean([point[2] for point in face_landmark]))
 
             if not demo_mode:
                 target_image = np.hstack((target_image, depth_colored))
 
             cv2.imshow("Frame", target_image)
 
-            pressed_key = cv2.waitKey(3)
-            if pressed_key == ord("a"):
-                break
-
-            # def array_to_vec(array, previous):
-            if center is None:
-                vec = previous
-            else:
-                vec = ps.Vector(x=center[0], y=-center[1], z=center[2])
-                previous = vec
-
             # print(effective_gesture_texts)
             perc_state = ps.PerceptionState(
                 people=[
                     ps.Person(
-                        face=ps.Face(center=vec),
+                        face=face_state,
                         hands=[
                             ps.Hand(
                                 # gesture_type=ps.Hand.GestureType.WAVING \
@@ -550,6 +701,10 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             data = ["PerceptionState".encode(
                 'utf-8'), perc_state.SerializeToString()]
             publisher.send_multipart(data)
+
+            pressed_key = cv2.waitKey(3)
+            if pressed_key == ord("a"):
+                break
 
     finally:
         # ストリーミング停止
