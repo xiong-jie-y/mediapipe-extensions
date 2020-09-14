@@ -347,6 +347,30 @@ public:
         return py::cast(channel_name_to_pocket_[name]->Get<float>());
     }
 
+
+    std::vector<py::bytes> GetProtoList(std::string name)
+    {
+        if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
+            std::vector<py::bytes> a(0);
+            return a;
+        }
+
+        if (!channel_name_to_pocket_[name]) {
+            std::vector<py::bytes> a(0);
+            return a;
+        }
+
+        std::vector<py::bytes> serializedProtoList;
+        auto messageLites = channel_name_to_pocket_[name]->GetVectorOfProtoMessageLitePtrs();
+        for (auto messageLite: messageLites.ValueOrDie()) {
+            // size_t size = messageLite->ByteSizeLong(); 
+            // char *buffer = malloc(size);
+            // messageLite->SerializeToArray(buffer, size);
+            serializedProtoList.push_back(py::bytes(messageLite->SerializeAsString()));
+        }      
+        return serializedProtoList;
+    }
+
     std::vector<std::string> GetStringArray(std::string name)
     {
         if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
@@ -390,6 +414,7 @@ PYBIND11_MODULE(graph_runner, m)
         .def("get_normalized_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::NormalizedLandmarkList>>)
         .def("get_normalized_landmark_list", &GraphRunner::GetPoint3DListFromLandmark<mediapipe::NormalizedLandmarkList>)
         .def("get_float", &GraphRunner::GetFloat)
+        .def("get_proto_list", &GraphRunner::GetProtoList)
         .def("get_string_array", &GraphRunner::GetStringArray)
         .def("get_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::LandmarkList>>);
     // .def("get_landmark_lists_pb", &GraphRunner::GetProtobufObject<std::vector<mediapipe::NormalizedLandmarkList>>);

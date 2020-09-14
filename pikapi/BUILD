@@ -10,6 +10,7 @@ pybind_extension(
         "@mediapipe//mediapipe/graphs/hand_tracking:multi_hand_mobile_calculators",
         "@mediapipe//mediapipe/graphs/face_mesh:desktop_live_gpu_calculators",
         "//pikapi/modules/face:face_landmark_front_gpu",
+        "//pikapi/modules/face:multi_hand_landmark_gpu",
         "//cpp/mp_extensions/calculators/hand_gesture:gesture_recognizer_calculator",
         "@mediapipe//mediapipe/graphs/pose_tracking:upper_body_pose_tracking_gpu_deps",
         "@mediapipe//mediapipe/framework/port:map_util",

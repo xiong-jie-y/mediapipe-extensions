@@ -8,6 +8,7 @@ output_stream: "output_video"
 
 output_stream: "gesture_texts"
 output_stream: "multi_hand_landmarks"
+output_stream: "multi_handedness"
 
 
 # Throttles the images flowing downstream for flow control. It passes through
@@ -74,11 +75,12 @@ node {
 # Subgraph that localizes hand landmarks for multiple hands (see
 # multi_hand_landmark.pbtxt).
 node {
-  calculator: "MultiHandLandmarkSubgraph"
+  calculator: "MultiHandLandmarkSubgraphWithHandedness"
   input_stream: "IMAGE:throttled_input_video"
   input_stream: "NORM_RECTS:multi_hand_rects"
   output_stream: "LANDMARKS:multi_hand_landmarks"
   output_stream: "NORM_RECTS:multi_hand_rects_from_landmarks"
+  output_stream: "CLASSIFICATIONS:multi_handedness"
 }
 
 # Caches a hand rectangle fed back from MultiHandLandmarkSubgraph, and upon the

@@ -8,8 +8,25 @@ message Vector {
     float z = 3;
 }
 
+message Quaternion {
+    float x = 1;
+    float y = 2;
+    float z = 3;
+    float w = 4;
+}
+
 message Face {
     Vector center = 1;
+    Vector eye_camera_position = 2;
+    Quaternion eye_camera_pose = 3;
+    Quaternion character_pose = 4;
+    Vector center_in_unity = 5;
+    Vector direction_vector_in_unity = 6;
+}
+
+message FingerState {
+    string finger_name = 1;
+    repeated Quaternion rotations = 2;
 }
 
 message Hand {
@@ -20,6 +37,8 @@ message Hand {
     }
     GestureType gesture_type = 1;
     repeated string gesture_names = 2;
+    string hand_exist_side = 3;
+    repeated FingerState finger_states = 4;
 }
 
 message Person {

@@ -125,6 +125,18 @@ mediapipe_simple_subgraph(
     ],
 )
 
+mediapipe_simple_subgraph(
+    name = "multi_hand_landmark_gpu",
+    graph = "multi_hand_landmark.pbtxt",
+    register_as = "MultiHandLandmarkSubgraphWithHandedness",
+    deps = [
+        "@mediapipe//mediapipe/graphs/hand_tracking/subgraphs:hand_landmark_gpu",
+        "@mediapipe//mediapipe/calculators/core:begin_loop_calculator",
+        "@mediapipe//mediapipe/calculators/core:end_loop_calculator",
+        "@mediapipe//mediapipe/calculators/util:filter_collection_calculator",
+    ],
+)
+
 # exports_files(
 #     srcs = [
 #         "face_landmark_192_weight_quant.tflite",
