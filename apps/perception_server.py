@@ -1,13 +1,15 @@
 """This is the perception server that accept RGBD camera input 
 and output data through ipc (currently zeromq) in the proto message format..
 """
+from numpy.core.fromnumeric import mean
+from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time
 
 from scipy.spatial.transform.rotation import Rotation
 import pikapi.protos.perception_state_pb2 as ps
 from pikapi.head_gestures import YesOrNoEstimator
 import logging
-from typing import List
+from typing import Dict, List
 import IPython
 import cv2
 import numpy as np
@@ -183,6 +185,7 @@ def get_relative_angles_from_xy_plain(position_array):
 
     finger_diff = position_array[1:] - position_array[:-1]
     finger_diff = np.concatenate((np.expand_dims(base, 0), finger_diff))
+    
 
     # st.write(finger_diff)
     return [
@@ -205,6 +208,29 @@ def get_relative_angles_from_finger_base(landmark, finger_ids):
         for a, b in zip(finger_diff[1:], finger_diff[:-1])
     ]
 
+def get_palm_angle(hand_landmark):
+    rotvecs = []
+    base = np.array([0, 0, 1])
+    HAND_PLAIN_INDICES = [5, 9, 13, 17]
+    for hand1, hand2 in zip(HAND_PLAIN_INDICES[:-1], HAND_PLAIN_INDICES[1:]):
+        a = hand_landmark[hand1] - hand_landmark[0] 
+        b = hand_landmark[hand2] - hand_landmark[0] 
+        # rot_axis, angle = get_shortest_rotvec_between_two_vector2(a, b)
+        rot_axis, _ = get_shortest_rotvec_between_two_vector(a, b)
+        rotvecs.append(rot_axis)
+
+    # return Rotation.from_rotvec(rotvecs).mean().as_quat()
+    mean_direction = np.mean(rotvecs, axis=0)
+    # print(mean_direction)
+    mean_rotation = get_shortest_rotvec_between_two_vector(base, mean_direction)
+    if mean_rotation is None:
+        return None
+
+    # print(mean_rotation)
+    axis, theta = mean_rotation
+    return Rotation.from_rotvec(axis * theta)
+
+
 def depth_from_maybe_points_3d(hand_landmark_points):
     zs = hand_landmark_points[:, 2]
     zs = zs[~np.isnan(zs)]
@@ -212,6 +238,7 @@ def depth_from_maybe_points_3d(hand_landmark_points):
         return None
 
     return np.mean(zs)
+
 
 def visualize_landmark_list(landmark_list, width, height, image):
     for i, point in enumerate(landmark_list):
@@ -221,6 +248,7 @@ def visualize_landmark_list(landmark_list, width, height, image):
             point[1] * height)), cv2.FONT_HERSHEY_PLAIN, 1.0,
             (255, 255, 255), 1, cv2.LINE_AA)
 
+
 def get_denormalized_landmark_list(landmark_list, width, height):
     denormalized_landmark = np.copy(landmark_list)
     denormalized_landmark[:, 0] *= width
@@ -228,6 +256,7 @@ def get_denormalized_landmark_list(landmark_list, width, height):
     denormalized_landmark[:, 1] *= height
 
     return denormalized_landmark
+
 
 class HandGestureRecognizer():
     def __init__(self, intrinsic_matrix):
@@ -243,12 +272,11 @@ class HandGestureRecognizer():
 
     def _get_achimuitehoi_gesture(self, landmark_list: np.ndarray,
                                   width: int, height: int, visualize_image: np.ndarray, min_x: int, min_y: int) -> str:
-        landmark_list = get_denormalized_landmark_list(landmark_list, width, height)
+        landmark_list = get_denormalized_landmark_list(
+            landmark_list, width, height)
 
         max_angles = {}
         for finger_name in FINGER_IDS.keys():
-            # rotations = get_relative_angles_from_xy_plain(
-            #     landmark_list[FINGER_IDS[finger_name]])
             rotations = get_relative_angles_from_finger_base(
                 landmark_list, FINGER_IDS[finger_name])
             max_angles[finger_name] = np.max([rot[1] for rot in rotations])
@@ -305,13 +333,53 @@ class HandGestureRecognizer():
                     (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 2.0,
                     (0, 0, 255), 3, cv2.LINE_AA)
 
-        pressed_key = cv2.waitKey(2)
-        if pressed_key == ord("b"):
-            if state_tag == "pointing_to_up":
-                import IPython
-                IPython.embed()
-
         return state_tag
+
+    def _get_finger_rotations(self, landmark_list, width, height) -> Dict[str, Rotation]:
+        landmark_list = get_denormalized_landmark_list(
+            landmark_list, width, height)
+
+        finger_name_rotations_map = {}
+        for finger_name in FINGER_IDS.keys():
+            rotations = get_relative_angles_from_xy_plain(
+                landmark_list[FINGER_IDS[finger_name]])
+            finger_name_rotations_map[finger_name] = [
+                Rotation.from_rotvec(axis * theta) for axis, theta in rotations]
+
+        return finger_name_rotations_map
+
+    def _proto_quaternion_from_rotation(self, rotation):
+        quat = rotation.as_quat()
+        return ps.Quaternion(x=quat[0], y=quat[1], z=quat[2], w=quat[3])
+
+    def _get_fingers(self, landmark_list, width, height) -> List[ps.Finger]:
+        denormalized_landmark_list = get_denormalized_landmark_list(
+            landmark_list, width, height)
+        palm_rotation = get_palm_angle(denormalized_landmark_list)
+
+        direction_normalized_landmark_list = None
+        # It is already normalized, when None.
+        if palm_rotation is None:
+            direction_normalized_landmark_list = denormalized_landmark_list
+        else:
+            direction_normalized_landmark_list = palm_rotation.inv().apply(denormalized_landmark_list)
+        
+        # assert(direction_normalized_landmark_list is not None)
+
+        finger_states = []
+        for finger_name in FINGER_IDS.keys():
+            rotations = get_relative_angles_from_xy_plain(direction_normalized_landmark_list[FINGER_IDS[finger_name]])
+            finger_states.append(
+                ps.Finger(finger_name=finger_name, rotations=[
+                    self._proto_quaternion_from_rotation(
+                        Rotation.from_rotvec(realsense_vec_to_unity_char_vec(axis) * theta)) for axis, theta in rotations
+                ], rotation_angles = [
+                    theta for axis, theta in rotations
+                ]
+                )
+            )
+
+        return finger_states
 
     def _accumulate_trajectory(self, landmark_list: np.ndarray,
                                width: int, height: int, visualize_image: np.ndarray):
@@ -331,8 +399,8 @@ class HandGestureRecognizer():
                         second[1] * height)), (255, 255, 255), 5)
 
     def get_hand_states(self,
-                     rgb_image: np.ndarray, depth_image: np.ndarray,
-                     visualize_image: np.ndarray) -> List[str]:
+                        rgb_image: np.ndarray, depth_image: np.ndarray,
+                        visualize_image: np.ndarray) -> List[str]:
         width = rgb_image.shape[1]
         height = rgb_image.shape[0]
 
@@ -342,11 +410,18 @@ class HandGestureRecognizer():
             self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks"))
         gesture_texts = self.hand_recognizer.get_string_array("gesture_texts")
         from mediapipe.framework.formats.classification_pb2 import ClassificationList
-        multi_handedness = self.hand_recognizer.get_proto_list("multi_handedness")
+        multi_handedness = self.hand_recognizer.get_proto_list(
+            "multi_handedness")
         multi_handedness_parsed = []
         for handedness in multi_handedness:
             a = ClassificationList()
             a.ParseFromString(handedness)
+            # Because it's reverse.
+            if a.classification[0].label == "Right":
+                a.classification[0].label = "Left"
+            else:
+                a.classification[0].label = "Right"
+
             multi_handedness_parsed.append(a)
             # import IPython; IPython.embed()
 
@@ -376,16 +451,18 @@ class HandGestureRecognizer():
             min_y = int(min(hand_landmark_list[:, 1]) * height)
             max_x = int(max(hand_landmark_list[:, 0]) * width)
             max_y = int(max(hand_landmark_list[:, 1]) * height)
-            import pikapi.utils.opencv 
-            pikapi.utils.opencv.overlay_rect_with_opacity(visualize_image, (min_x, min_y, (max_x - min_x), (max_y - min_y)))
+            import pikapi.utils.opencv
+            pikapi.utils.opencv.overlay_rect_with_opacity(
+                visualize_image, (min_x, min_y, (max_x - min_x), (max_y - min_y)))
             effective_gesture_texts.append(gesture_text)
-            visualize_landmark_list(hand_landmark_list, width, height, visualize_image)
+            visualize_landmark_list(
+                hand_landmark_list, width, height, visualize_image)
 
             cv2.putText(visualize_image, gesture_text, (min_x, min_y + 25), cv2.FONT_HERSHEY_PLAIN, 1.0,
                         (0, 0, 0), 2, cv2.LINE_AA)
             # print(handedness.classification[0].label)
             cv2.putText(visualize_image, handedness.classification[0].label, (min_x, min_y + 100), cv2.FONT_HERSHEY_PLAIN, 1.0,
-                        (0, 0, 0), 2, cv2.LINE_AA)                                                
+                        (0, 0, 0), 2, cv2.LINE_AA)
 
             effective_gesture_texts.append(self._get_achimuitehoi_gesture(
                 hand_landmark_list, width, height, visualize_image, min_x, min_y + 50))
@@ -393,16 +470,23 @@ class HandGestureRecognizer():
                 hand_landmark_list, width, height, visualize_image)
 
             hand_states.append(ps.Hand(
-                gesture_names=effective_gesture_texts
+                gesture_names=effective_gesture_texts,
+                hand_exist_side=handedness.classification[0].label,
+                fingers=self._get_fingers(
+                    hand_landmark_list, width, height)
             ))
 
+        # print(hand_states)
         return hand_states
-        
+
+
 class IMUInfo:
     def __init__(self, acc: np.ndarray):
         self.acc = acc
 
+
 NOSE_INDEX = 4
+
 
 class FaceRecognizer:
     def __init__(self, intrinsic_matrix):
@@ -422,7 +506,8 @@ class FaceRecognizer:
     #     right_center_iris = face_iris_landmark[468 + 5, :]
 
     def _adjust_by_imu(self, points: np.ndarray, imu_info: IMUInfo) -> np.ndarray:
-        rot = get_shortest_rotvec_between_two_vector(np.array([0, -1.0, 0]), imu_info.acc)
+        rot = get_shortest_rotvec_between_two_vector(
+            np.array([0, -1.0, 0]), imu_info.acc)
         if rot is None:
             return points
 
@@ -436,19 +521,21 @@ class FaceRecognizer:
         return tuple([int(nd_3d[0]), int(nd_3d[1])])
 
     def _get_face_direction(self, landmark_list, width, height, visualize_image):
-        denormalized_landmark = get_denormalized_landmark_list(landmark_list, width, height)
+        denormalized_landmark = get_denormalized_landmark_list(
+            landmark_list, width, height)
         center = np.mean(denormalized_landmark, axis=0)
-        center_to_nose_direction =  denormalized_landmark[NOSE_INDEX] - center
+        center_to_nose_direction = denormalized_landmark[NOSE_INDEX] - center
         # print(center_to_nose_direction)
-        cv2.line(visualize_image, 
-            self.nd_3d_to_nd_2d(denormalized_landmark[NOSE_INDEX]),
-            self.nd_3d_to_nd_2d(denormalized_landmark[NOSE_INDEX] + center_to_nose_direction * 4),
-            (255, 255, 255), 5)
+        cv2.line(visualize_image,
+                 self.nd_3d_to_nd_2d(denormalized_landmark[NOSE_INDEX]),
+                 self.nd_3d_to_nd_2d(
+                     denormalized_landmark[NOSE_INDEX] + center_to_nose_direction * 4),
+                 (255, 255, 255), 5)
 
         return np.array(
             [-center_to_nose_direction[0],
-            -center_to_nose_direction[1],
-            -center_to_nose_direction[2]]
+             -center_to_nose_direction[1],
+             -center_to_nose_direction[2]]
         )
 
     def get_face_state(self,
@@ -500,7 +587,6 @@ class FaceRecognizer:
                 mean_depth = depth_from_maybe_points_3d(
                     get_camera_coord_landmarks(face_landmark, width, height, depth_image, self.intrinsic_matrix))
                 # if mean_depth is None:
-                
 
                 # import IPython; IPython.embed()
                 # center = get_face_center_3d(
@@ -513,13 +599,13 @@ class FaceRecognizer:
 
                 x, y = project_point(
                     center, width, height, self.intrinsic_matrix)
-                    
+
                 # print(center)
                 # print(x,y)
-                
+
                 # if mean_depth < 100:
                 #    import IPython; IPython.embed()
-                
+
                 # mean depth
                 for i, point in enumerate(face_landmark):
                     cv2.circle(visualize_image, (int(point[0] * rgb_image.shape[1]), int(
@@ -531,15 +617,19 @@ class FaceRecognizer:
                 face_image = np.zeros((face_height * rate, face_width * rate))
                 for i, point in enumerate(face_landmark):
                     draw_x = int((point[0] - min_x/width) * rate * width)
-                    draw_y = int((point[1] - min_y/height) * rate  * height)
-                    cv2.circle(face_image, (draw_x, draw_y), 3, (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
+                    draw_y = int((point[1] - min_y/height) * rate * height)
+                    cv2.circle(face_image, (draw_x, draw_y), 3,
+                               (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
                     cv2.putText(face_image, str(i), (draw_x, draw_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
-                                            (255, 255, 255), 1, cv2.LINE_AA)
+                                (255, 255, 255), 1, cv2.LINE_AA)
 
-                direction = self._get_face_direction(face_landmark, width, height, visualize_image)
-                direction = self._adjust_by_imu(np.array([direction]), imu_info)[0]
-                center_to_nose_direction = ps.Vector(x=direction[0], y=direction[1], z=direction[2])
-                
+                direction = self._get_face_direction(
+                    face_landmark, width, height, visualize_image)
+                direction = self._adjust_by_imu(
+                    np.array([direction]), imu_info)[0]
+                center_to_nose_direction = ps.Vector(
+                    x=direction[0], y=direction[1], z=direction[2])
+
                 # cv2.imshow("Face Image", face_image)
 
                 cv2.circle(visualize_image, (x, y), 3, (0, 0, 255),
@@ -556,14 +646,16 @@ class FaceRecognizer:
 
             # Calculate face center position in unity.
             face_center_in_unity = np.copy(center)
-            face_center_in_unity = self._adjust_by_imu(np.array([face_center_in_unity]), imu_info)[0]
+            face_center_in_unity = self._adjust_by_imu(
+                np.array([face_center_in_unity]), imu_info)[0]
 
             # From camera coordinate to unity global coordinate.
             face_center_in_unity[0] = -face_center_in_unity[0]
             face_center_in_unity[1] = 848 - (face_center_in_unity[1] + 150)
             face_center_in_unity[2] += SCREEN_TO_CHAR
             face_center_in_unity[2] = -face_center_in_unity[2]
-            center_in_unity_pb = ps.Vector(x=face_center_in_unity[0]/1000, y=face_center_in_unity[1]/1000, z=face_center_in_unity[2]/1000)
+            center_in_unity_pb = ps.Vector(
+                x=face_center_in_unity[0]/1000, y=face_center_in_unity[1]/1000, z=face_center_in_unity[2]/1000)
             # print("Center")
             # print(center_in_unity_pb)
             # print(face_center_in_unity)
@@ -579,33 +671,38 @@ class FaceRecognizer:
             # cam_x = math.tan(math.atan2(center[0], center[2])) * center[0]
             cam_x = center[0] / center[2] * SCREEN_TO_CHAR
             cam_y = center[1] / center[2] * SCREEN_TO_CHAR
-            camera_direction = np.array([0, 848, -SCREEN_TO_CHAR]) - face_center_in_unity
+            camera_direction = np.array(
+                [0, 848, -SCREEN_TO_CHAR]) - face_center_in_unity
             # camera_direction_in_unity = np.array([
-            #     -camera_direction[0], 
+            #     -camera_direction[0],
             #     -camera_direction[1],
             #     -camera_direction[2]
             #     ])
             # print(camera_direction)
-            rot = get_shortest_rotvec_between_two_vector(np.array([0,0,1]), camera_direction)
+            rot = get_shortest_rotvec_between_two_vector(
+                np.array([0, 0, 1]), camera_direction)
             if rot is not None:
                 # import IPython; IPython.embed()
-                
+
                 axis, theta = rot
                 pose = Rotation.from_rotvec(axis * theta).as_quat()
-                camera_pose = ps.Quaternion(x=pose[0], y=pose[1], z=pose[2], w=pose[3])
+                camera_pose = ps.Quaternion(
+                    x=pose[0], y=pose[1], z=pose[2], w=pose[3])
                 # char_pose = Rotation.from_rotvec(axis * theta).inv().as_quat()
                 # print(center)
                 xz_theta = math.atan2(-center[0], center[2])
                 # print(xz_theta)
-                char_pose = Rotation.from_rotvec(np.array([0, 1, 0]) * -xz_theta).inv().as_quat()
+                char_pose = Rotation.from_rotvec(
+                    np.array([0, 1, 0]) * -xz_theta).inv().as_quat()
                 character_pose = ps.Quaternion(
                     x=char_pose[0], y=char_pose[1], z=char_pose[2], w=char_pose[3])
                 # print(axis, theta)
                 # print(character_pose)
                 # import IPython; IPython.embed()
-                
-            eye_camera_position = ps.Vector(x=-cam_x/1000.0, y=-cam_y/1000.0, z=0.0)
-        
+
+            eye_camera_position = ps.Vector(
+                x=-cam_x/1000.0, y=-cam_y/1000.0, z=0.0)
+
             # print(eye_camera_position)
             # cam_y = math.tan(math.atan2(center[1], center[2])) * center[1]
 
@@ -619,9 +716,86 @@ class FaceRecognizer:
         # print(center_to_nose_direction)
         return ps.Face(
             center=vec, eye_camera_position=eye_camera_position, eye_camera_pose=camera_pose,
-            character_pose=character_pose, 
+            character_pose=character_pose,
             center_in_unity=center_in_unity_pb,
             direction_vector_in_unity=center_to_nose_direction
+        )
+
+
+class BodyRecognizer():
+    def __init__(self, intrinsic_matrix):
+        self.pose_recognizer = pikapi.graph_runner.GraphRunner(
+            "pikapi/graphs/upper_body_pose_tracking_gpu.pbtxt", [
+                "pose_landmarks"], {})
+        self.intrinsic_matrix = intrinsic_matrix
+
+    def _proto_quaternion_from_rotation(self, rotation):
+        quat = rotation.as_quat()
+        return ps.Quaternion(x=quat[0], y=quat[1], z=quat[2], w=quat[3])
+
+    def _get_bones(self, connections, landmark_list, width, height):
+        denormalized_landmark_list = get_denormalized_landmark_list(landmark_list, width, height)
+
+        # Temporary because z is unrealiable now.
+        denormalized_landmark_list[:, 2] = 0
+        rotations = get_relative_angles_from_finger_base(denormalized_landmark_list, connections)
+
+        bones = []
+        names = ["shoulder", "arm"]
+        for rotation, name in zip(rotations, names):
+            quat = None
+            if rotation is None:
+                quat = ps.Quaternion(x=0,y=0, z=0, w=1)
+            else:
+                axis, theta = rotation
+                # axis[0] = -axis[0]
+                # axis[1] = -axis[1]
+                axis[2] = -axis[2]
+                quat = self._proto_quaternion_from_rotation(Rotation.from_rotvec(axis * theta))
+            
+            pressed_key = cv2.waitKey(2)
+            if pressed_key == ord("b"):
+                import IPython
+                IPython.embed()
+            bones.append(ps.Bone(pose=quat, name=name, z_angle=theta))
+
+        print(bones)
+        return bones
+
+    def get_body_state(self, rgb_image: np.ndarray, depth_image: np.ndarray,
+                       visualize_image: np.ndarray):
+        width = rgb_image.shape[1]
+        height = rgb_image.shape[0]
+
+        self.pose_recognizer.process_frame(rgb_image)
+        pose_landmark_list = np.array(
+            self.pose_recognizer.get_normalized_landmark_list("pose_landmarks"))
+
+        bone_connections = {
+            "right": [12, 11, 13, 15]
+        }
+        bones = []
+
+        if len(pose_landmark_list) > 0:
+            # if not is_too_far(pose_landmark_list, width, height, depth_image):
+            mean_depth = depth_from_maybe_points_3d(
+                get_camera_coord_landmarks(pose_landmark_list, width, height, depth_image, self.intrinsic_matrix))
+            if mean_depth > 1500:
+                return None
+
+            for direction, connections in bone_connections.items():
+                new_bones = self._get_bones(connections, pose_landmark_list, width, height)
+                for new_bone in new_bones:
+                    new_bone.name = f"{direction}_{new_bone.name}"
+                bones += new_bones
+            for point in pose_landmark_list:
+                cv2.circle(visualize_image, (int(point[0] * width), int(
+                    point[1] * height)), 3, (255, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
+            # else:
+            #     print(mean_depth)
+
+        return ps.Body(
+            bones=bones
         )
 
 
@@ -635,10 +809,7 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
 
     face_recognizer = FaceRecognizer(intrinsic_matrix)
     hand_gesture_recognizer = HandGestureRecognizer(intrinsic_matrix)
-    pose_recognizer = pikapi.graph_runner.GraphRunner(
-        "pikapi/graphs/upper_body_pose_tracking_gpu.pbtxt", [
-            "pose_landmarks"], {})
-
+    body_recognizer = BodyRecognizer(intrinsic_matrix)
     import zmq
     context = zmq.Context()
     publisher = context.socket(zmq.PUB)
@@ -684,19 +855,20 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             acc = frames[2].as_motion_frame().get_motion_data()
             gyro = frames[3].as_motion_frame().get_motion_data()
             timestamp = frames[3].as_motion_frame().get_timestamp()
-            rotation_estimator.process_gyro(np.array([gyro.x, gyro.y, gyro.z]), timestamp)
+            rotation_estimator.process_gyro(
+                np.array([gyro.x, gyro.y, gyro.z]), timestamp)
             rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
             theta = rotation_estimator.get_theta()
             acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
             if len(acc_vectors) > 200:
                 acc_vectors.popleft()
-            
+
             acc = np.mean(acc_vectors, axis=0)
             # print(acc)
             # print(np.array([acc.x, acc.y, acc.z]))
-            
+
             # print(theta)
-            
+
             frame = np.asanyarray(color_frame.get_data())
             depth_image = np.asanyarray(depth_frame.get_data())
 
@@ -736,22 +908,9 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             hand_states = \
                 hand_gesture_recognizer.get_hand_states(
                     gray, depth_image, target_image)
-
-            pose_recognizer.process_frame(gray)
-            pose_landmark_list = np.array(
-                pose_recognizer.get_normalized_landmark_list("pose_landmarks"))
-
+            body_state = \
+                body_recognizer.get_body_state(gray, depth_image, target_image)
             # print(pose_landmark_list)
-
-            if len(pose_landmark_list) > 0:
-                # if not is_too_far(pose_landmark_list, width, height, depth_image):
-                # mean_depth = get_mean_depth(pose_landmark_list, width, height, depth_image)
-                # if np.mean(mean_depth) <= 1500:
-                for point in pose_landmark_list:
-                    cv2.circle(target_image, (int(point[0] * frame.shape[1]), int(
-                        point[1] * frame.shape[0])), 3, (255, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
-                # else:
-                #     print(mean_depth)
 
             if not demo_mode:
                 target_image = np.hstack((target_image, depth_colored))
@@ -764,10 +923,12 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
                     ps.Person(
                         face=face_state,
                         hands=hand_states,
+                        body=body_state,
                     )
                 ]
             )
 
+            # print(perc_state)
             data = ["PerceptionState".encode(
                 'utf-8'), perc_state.SerializeToString()]
             publisher.send_multipart(data)
