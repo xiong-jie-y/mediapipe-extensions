@@ -208,6 +208,21 @@ def get_relative_angles_from_finger_base(landmark, finger_ids):
         for a, b in zip(finger_diff[1:], finger_diff[:-1])
     ]
 
+def get_relative_angles_to_match_to_followee(landmark, finger_ids):
+    # finger_pos = landmark[WRIST_IDS + finger_ids]
+    finger_pos = landmark[finger_ids]
+    finger_diff = finger_pos[1:] - finger_pos[:-1]
+    print(finger_diff)
+    
+    # rotations = []
+    # for a, b in zip(finger_diff[1:], finger_diff[:-1]):
+    #     rotations.append(get_shortest_rotvec_between_two_vector2(a, b))
+
+    return [
+        get_shortest_rotvec_between_two_vector(a, b)
+        for a, b in zip(finger_diff[:-1], finger_diff[1:])
+    ]
+
 def get_palm_angle(hand_landmark):
     rotvecs = []
     base = np.array([0, 0, 1])
@@ -354,7 +369,7 @@ class HandGestureRecognizer():
 
     def _get_fingers(self, landmark_list, width, height) -> List[ps.Finger]:
         denormalized_landmark_list = get_denormalized_landmark_list(
-            landmark_list, width, height)
+            landmark_list, width, height) 
         palm_rotation = get_palm_angle(denormalized_landmark_list)
 
         direction_normalized_landmark_list = None
@@ -520,23 +535,53 @@ class FaceRecognizer:
     def nd_3d_to_nd_2d(self, nd_3d):
         return tuple([int(nd_3d[0]), int(nd_3d[1])])
 
-    def _get_face_direction(self, landmark_list, width, height, visualize_image):
+    def _get_face_direction(self, 
+        landmark_list, width, height, visualize_image, face_image
+        ):
         denormalized_landmark = get_denormalized_landmark_list(
             landmark_list, width, height)
         center = np.mean(denormalized_landmark, axis=0)
         center_to_nose_direction = denormalized_landmark[NOSE_INDEX] - center
         # print(center_to_nose_direction)
+        up_direction = denormalized_landmark[9] - denormalized_landmark[164]
         cv2.line(visualize_image,
                  self.nd_3d_to_nd_2d(denormalized_landmark[NOSE_INDEX]),
                  self.nd_3d_to_nd_2d(
                      denormalized_landmark[NOSE_INDEX] + center_to_nose_direction * 4),
                  (255, 255, 255), 5)
+        cv2.line(visualize_image,
+                 self.nd_3d_to_nd_2d(denormalized_landmark[164]),
+                 self.nd_3d_to_nd_2d(
+                     denormalized_landmark[164] + up_direction * 4),
+                 (255, 255, 255), 5)
 
-        return np.array(
-            [-center_to_nose_direction[0],
-             -center_to_nose_direction[1],
-             -center_to_nose_direction[2]]
-        )
+        def camera_coord_to_unity_coord(array):
+            return np.array([array[0], -array[1], -array[2]])
+
+        # Transform pose axis to unity world coordinate.
+        up = camera_coord_to_unity_coord(up_direction / np.linalg.norm(up_direction))
+        front = camera_coord_to_unity_coord(center_to_nose_direction / np.linalg.norm(center_to_nose_direction))
+        right = np.cross(up, front)
+        right = right / np.linalg.norm(right)
+
+        rot = Rotation.align_vectors([right, up, front], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+
+        rot_vec = rot[0].as_rotvec()
+        debug_txt = f"""Rotation
+        {rot_vec}
+        {np.linalg.norm(rot_vec)}
+        {rot[1]}
+        """
+
+        cv2.putText(face_image, debug_txt, (0, 50), cv2.FONT_HERSHEY_PLAIN, 1.0,
+                    (255, 255, 255), 1, cv2.LINE_AA)
+
+        # return np.array(
+        #     [-center_to_nose_direction[0],
+        #      -center_to_nose_direction[1],
+        #      -center_to_nose_direction[2]]
+        # )
+        return rot_vec
 
     def get_face_state(self,
                        rgb_image: np.ndarray, depth_image: np.ndarray,
@@ -551,13 +596,13 @@ class FaceRecognizer:
             "face_landmarks_with_iris")]
         left_mm = self.runner.get_float("left_iris_depth_mm")
         right_mm = self.runner.get_float("right_iris_depth_mm")
-        if left_mm is not None and right_mm is not None:
-            # cv2.putText(blank_image, str(int((left_mm + right_mm)/2)) + "[mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
-            #     (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.putText(visualize_image, f"Left: {int(left_mm)} [mm]", (0, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
-                        (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(visualize_image, f"Right: {int(right_mm)} [mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
-                        (255, 255, 255), 1, cv2.LINE_AA)
+        # if left_mm is not None and right_mm is not None:
+        #     # cv2.putText(blank_image, str(int((left_mm + right_mm)/2)) + "[mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
+        #     #     (255, 255, 255), 1, cv2.LINE_AA)
+        #     cv2.putText(visualize_image, f"Left: {int(left_mm)} [mm]", (0, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
+        #                 (255, 255, 255), 2, cv2.LINE_AA)
+        #     cv2.putText(visualize_image, f"Right: {int(right_mm)} [mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
+        #                 (255, 255, 255), 1, cv2.LINE_AA)
 
         center = None
         center_to_nose_direction = None
@@ -624,13 +669,13 @@ class FaceRecognizer:
                                 (255, 255, 255), 1, cv2.LINE_AA)
 
                 direction = self._get_face_direction(
-                    face_landmark, width, height, visualize_image)
-                direction = self._adjust_by_imu(
-                    np.array([direction]), imu_info)[0]
+                    face_landmark, width, height, visualize_image, face_image)
+                # direction = self._adjust_by_imu(
+                #     np.array([direction]), imu_info)[0]
                 center_to_nose_direction = ps.Vector(
                     x=direction[0], y=direction[1], z=direction[2])
 
-                # cv2.imshow("Face Image", face_image)
+                cv2.imshow("Face Image", face_image)
 
                 cv2.circle(visualize_image, (x, y), 3, (0, 0, 255),
                            thickness=-1, lineType=cv2.LINE_AA)
@@ -733,33 +778,45 @@ class BodyRecognizer():
         quat = rotation.as_quat()
         return ps.Quaternion(x=quat[0], y=quat[1], z=quat[2], w=quat[3])
 
-    def _get_bones(self, connections, landmark_list, width, height):
+    def _get_bones(self, connections, landmark_list, width, height): 
         denormalized_landmark_list = get_denormalized_landmark_list(landmark_list, width, height)
 
-        # Temporary because z is unrealiable now.
+        # Not using z because z is unrealiable now.
+        # TODO: Update it when model is accurate enough.
         denormalized_landmark_list[:, 2] = 0
-        rotations = get_relative_angles_from_finger_base(denormalized_landmark_list, connections)
+
+        # rotations = get_relative_angles_from_finger_base(denormalized_landmark_list, connections)
+        rotations = get_relative_angles_to_match_to_followee(denormalized_landmark_list, connections)
+    
+        print(denormalized_landmark_list[15, :])
 
         bones = []
         names = ["shoulder", "arm"]
         for rotation, name in zip(rotations, names):
             quat = None
             if rotation is None:
-                quat = ps.Quaternion(x=0,y=0, z=0, w=1)
+                # quat = ps.Quaternion(x=0,y=0, z=0, w=1)
+                quat = ps.Quaternion(x=0, y=0, z=0, w=0)
             else:
                 axis, theta = rotation
-                # axis[0] = -axis[0]
-                # axis[1] = -axis[1]
+                axis[0] = -axis[0]
+                axis[1] = -axis[1]
                 axis[2] = -axis[2]
-                quat = self._proto_quaternion_from_rotation(Rotation.from_rotvec(axis * theta))
+                # quat = self._proto_quaternion_from_rotation(Rotation.from_rotvec(axis * -theta))
+                r = axis * -theta
+                quat = ps.Quaternion(x=r[0], y=r[1], z=r[2], w=0)
+                # quat = self._proto_quaternion_from_rotation(Rotation.from_rotvec(axis * -theta))
             
+            # print(name)
+            # print(rotation)
+            # print(axis)
             pressed_key = cv2.waitKey(2)
             if pressed_key == ord("b"):
                 import IPython
                 IPython.embed()
-            bones.append(ps.Bone(pose=quat, name=name, z_angle=theta))
+            bones.append(ps.Bone(pose=quat, name=name, z_angle=-theta))
 
-        print(bones)
+        # print(bones)
         return bones
 
     def get_body_state(self, rgb_image: np.ndarray, depth_image: np.ndarray,
@@ -781,6 +838,9 @@ class BodyRecognizer():
             mean_depth = depth_from_maybe_points_3d(
                 get_camera_coord_landmarks(pose_landmark_list, width, height, depth_image, self.intrinsic_matrix))
             if mean_depth > 1500:
+                for i, point in enumerate(pose_landmark_list):
+                    cv2.circle(visualize_image, (int(point[0] * width), int(
+                        point[1] * height)), 3, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
                 return None
 
             for direction, connections in bone_connections.items():
@@ -788,9 +848,12 @@ class BodyRecognizer():
                 for new_bone in new_bones:
                     new_bone.name = f"{direction}_{new_bone.name}"
                 bones += new_bones
-            for point in pose_landmark_list:
+            for i, point in enumerate(pose_landmark_list):
                 cv2.circle(visualize_image, (int(point[0] * width), int(
                     point[1] * height)), 3, (255, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
+                cv2.putText(visualize_image, str(i), (int(point[0] * width), int(
+                    point[1] * height)), cv2.FONT_HERSHEY_PLAIN, 1.0,
+                    (255, 255, 255), 1, cv2.LINE_AA)
             # else:
             #     print(mean_depth)
 
@@ -838,10 +901,12 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
 
     rotation_estimator = RotationEstimator(0.98, True)
 
+    last_run = time.time()
     from collections import deque
     acc_vectors = deque([])
     try:
         while(True):
+            last_run = time.time()
             current_time = time.time()
             frames = pipeline.wait_for_frames()
             aligned_frames = align.process(frames)
@@ -852,6 +917,7 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
 
             # import IPython; IPython.embed()
 
+            # Camera pose estimation.
             acc = frames[2].as_motion_frame().get_motion_data()
             gyro = frames[3].as_motion_frame().get_motion_data()
             timestamp = frames[3].as_motion_frame().get_timestamp()
@@ -862,8 +928,9 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
             if len(acc_vectors) > 200:
                 acc_vectors.popleft()
-
             acc = np.mean(acc_vectors, axis=0)
+            imu_info = IMUInfo(acc)
+
             # print(acc)
             # print(np.array([acc.x, acc.y, acc.z]))
 
@@ -886,8 +953,6 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
 
             width = frame.shape[1]
             height = frame.shape[0]
-
-            imu_info = IMUInfo(acc)
 
             # Prepare depth image for dispaly.
             depth_image_cp = np.copy(depth_image)
@@ -912,10 +977,17 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
                 body_recognizer.get_body_state(gray, depth_image, target_image)
             # print(pose_landmark_list)
 
+            interval = time.time() - last_run
+            estimated_fps = 1.0 / interval
+            print(estimated_fps)
+            cv2.putText(target_image, f"FPS: {estimated_fps}", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
+                (255, 255, 255), 1, cv2.LINE_AA)
+
             if not demo_mode:
                 target_image = np.hstack((target_image, depth_colored))
 
             cv2.imshow("Frame", target_image)
+            last_run = time.time()
 
             # print(effective_gesture_texts)
             perc_state = ps.PerceptionState(
