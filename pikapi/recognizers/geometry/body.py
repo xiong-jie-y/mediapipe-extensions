@@ -1,3 +1,4 @@
+from pikapi.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time
@@ -70,10 +71,10 @@ class BodyGeometryRecognizer():
             # print(name)
             # print(rotation)
             # print(axis)
-            pressed_key = cv2.waitKey(2)
-            if pressed_key == ord("b"):
-                import IPython
-                IPython.embed()
+            # pressed_key = cv2.waitKey(2)
+            # if pressed_key == ord("b"):
+            #     import IPython
+            #     IPython.embed()
             bones.append(ps.Bone(pose=quat, name=name, z_angle=-theta))
 
         # print(bones)
@@ -84,39 +85,44 @@ class BodyGeometryRecognizer():
         width = rgb_image.shape[1]
         height = rgb_image.shape[0]
 
-        self.pose_recognizer.process_frame(rgb_image)
-        pose_landmark_list = np.array(
-            self.pose_recognizer.get_normalized_landmark_list("pose_landmarks"))
+        with time_measure("Process Body Graph"):
+            self.pose_recognizer.process_frame(rgb_image)
 
-        bone_connections = {
-            "right": [12, 11, 13, 15]
-        }
-        bones = []
+        with time_measure("Process Body Others"):
+            pose_landmark_list = np.array(
+                self.pose_recognizer.get_normalized_landmark_list("pose_landmarks"))
 
-        if len(pose_landmark_list) > 0:
-            # if not is_too_far(pose_landmark_list, width, height, depth_image):
-            mean_depth = depth_from_maybe_points_3d(
-                get_camera_coord_landmarks(pose_landmark_list, width, height, depth_image, self.intrinsic_matrix))
-            if mean_depth > 1500:
+            bone_connections = {
+                "right": [12, 11, 13, 15]
+            }
+            bones = []
+
+            if len(pose_landmark_list) > 0:
+                # if not is_too_far(pose_landmark_list, width, height, depth_image):
+                mean_depth = depth_from_maybe_points_3d(
+                    get_camera_coord_landmarks(pose_landmark_list, width, height, depth_image, self.intrinsic_matrix))
+                if mean_depth > 1500:
+                    for i, point in enumerate(pose_landmark_list):
+                        cv2.circle(visualize_image, (int(point[0] * width), int(
+                            point[1] * height)), 3, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
+                    return None
+
+                for direction, connections in bone_connections.items():
+                    new_bones = self._get_bones(connections, pose_landmark_list, width, height)
+                    for new_bone in new_bones:
+                        new_bone.name = f"{direction}_{new_bone.name}"
+                    bones += new_bones
                 for i, point in enumerate(pose_landmark_list):
                     cv2.circle(visualize_image, (int(point[0] * width), int(
-                        point[1] * height)), 3, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
-                return None
+                        point[1] * height)), 3, (255, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
+                    cv2.putText(visualize_image, str(i), (int(point[0] * width), int(
+                        point[1] * height)), cv2.FONT_HERSHEY_PLAIN, 1.0,
+                        (255, 255, 255), 1, cv2.LINE_AA)
+                # else:
+                #     print(mean_depth)
 
-            for direction, connections in bone_connections.items():
-                new_bones = self._get_bones(connections, pose_landmark_list, width, height)
-                for new_bone in new_bones:
-                    new_bone.name = f"{direction}_{new_bone.name}"
-                bones += new_bones
-            for i, point in enumerate(pose_landmark_list):
-                cv2.circle(visualize_image, (int(point[0] * width), int(
-                    point[1] * height)), 3, (255, 255, 0), thickness=-1, lineType=cv2.LINE_AA)
-                cv2.putText(visualize_image, str(i), (int(point[0] * width), int(
-                    point[1] * height)), cv2.FONT_HERSHEY_PLAIN, 1.0,
-                    (255, 255, 255), 1, cv2.LINE_AA)
-            # else:
-            #     print(mean_depth)
-
-        return ps.Body(
-            bones=bones
-        )
+            return ps.Body(
+                bones=bones
+            )
+    def get_state(self, *args, result={}):
+        result['body_state'] = self.get_body_state(*args)

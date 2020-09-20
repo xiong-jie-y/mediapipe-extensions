@@ -1,6 +1,9 @@
 """This is the perception server that accept RGBD camera input 
 and output data through ipc (currently zeromq) in the proto message format..
 """
+import os
+from threading import Thread
+import threading
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time
@@ -30,10 +33,11 @@ from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
 
 @click.command()
 @click.option('--camera-id', '-c', default=0, type=int)
+@click.option('--run-name', default="general")
 @click.option('--relative-depth', is_flag=True)
 @click.option('--use-realsense', is_flag=True)
 @click.option('--demo-mode', is_flag=True)
-def cmd(camera_id, relative_depth, use_realsense, demo_mode):
+def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
     intrinsic_matrix = get_intrinsic_matrix(camera_id)
 
     face_recognizer = FaceGeometryRecognizer(intrinsic_matrix)
@@ -67,6 +71,7 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
 
     rotation_estimator = RotationEstimator(0.98, True)
 
+    import pikapi.logging
     last_run = time.time()
     from collections import deque
     acc_vectors = deque([])
@@ -87,10 +92,10 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             acc = frames[2].as_motion_frame().get_motion_data()
             gyro = frames[3].as_motion_frame().get_motion_data()
             timestamp = frames[3].as_motion_frame().get_timestamp()
-            rotation_estimator.process_gyro(
-                np.array([gyro.x, gyro.y, gyro.z]), timestamp)
-            rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
-            theta = rotation_estimator.get_theta()
+            # rotation_estimator.process_gyro(
+            #     np.array([gyro.x, gyro.y, gyro.z]), timestamp)
+            # rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
+            # theta = rotation_estimator.get_theta()
             acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
             if len(acc_vectors) > 200:
                 acc_vectors.popleft()
@@ -117,9 +122,6 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            width = frame.shape[1]
-            height = frame.shape[0]
-
             # Prepare depth image for dispaly.
             depth_image_cp = np.copy(depth_image)
             depth_image_cp[depth_image_cp > 2500] = 0
@@ -132,20 +134,43 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
                 target_image = depth_colored
             else:
                 target_image = frame
+            
+            run_on_threads = False
+            if run_on_threads:
+                result = {}
+                face_th = threading.Thread(target=face_recognizer.get_state, \
+                        args=(gray, depth_image, target_image, imu_info), kwargs={"result": result})
+                face_th.start()
+                hand_th = threading.Thread(target=hand_gesture_recognizer.get_state, \
+                        args=(gray, depth_image, target_image), kwargs={"result": result})
+                hand_th.start()
+                body_th = threading.Thread(target=body_recognizer.get_state, \
+                        args=(gray, depth_image, target_image), kwargs={"result": result})
+                body_th.start()
 
-            face_state = face_recognizer.get_face_state(
-                gray, depth_image, target_image, imu_info)
+                face_th.join()
+                hand_th.join()
+                body_th.join()
 
-            hand_states = \
-                hand_gesture_recognizer.get_hand_states(
-                    gray, depth_image, target_image)
-            body_state = \
-                body_recognizer.get_body_state(gray, depth_image, target_image)
-            # print(pose_landmark_list)
+                face_state = result['face_state']
+                hand_states = result['hand_states']
+                body_state = result['body_state']
+            else:
+                face_state = face_recognizer.get_face_state(
+                    gray, depth_image, target_image, imu_info)
+
+                hand_states = \
+                    hand_gesture_recognizer.get_hand_states(
+                        gray, depth_image, target_image)
+                body_state = \
+                    body_recognizer.get_body_state(gray, depth_image, target_image)
+                # print(pose_landmark_list)
 
             interval = time.time() - last_run
             estimated_fps = 1.0 / interval
             # print(estimated_fps)
+            cv2.putText(target_image, f"Frame Time{interval * 1000}[ms]", (10, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
+                        (255, 255, 255), 1, cv2.LINE_AA)
             cv2.putText(target_image, f"FPS: {estimated_fps}", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
                         (255, 255, 255), 1, cv2.LINE_AA)
 
@@ -153,6 +178,8 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
                 target_image = np.hstack((target_image, depth_colored))
 
             cv2.imshow("Frame", target_image)
+            if face_recognizer.last_face_image is not None:
+                cv2.imshow("Face Image", face_recognizer.last_face_image)
             last_run = time.time()
 
             # print(effective_gesture_texts)
@@ -170,8 +197,12 @@ def cmd(camera_id, relative_depth, use_realsense, demo_mode):
             data = ["PerceptionState".encode('utf-8'), perc_state.SerializeToString()]
             publisher.send_multipart(data)
 
-            pressed_key = cv2.waitKey(3)
+            pressed_key = cv2.waitKey(2)
             if pressed_key == ord("a"):
+                # import IPython; IPython.embed()
+                import json
+                json.dump(dict(pikapi.logging.time_measure_result), open(
+                    f"{run_name}_performance.json", "w"))
                 break
 
     finally:

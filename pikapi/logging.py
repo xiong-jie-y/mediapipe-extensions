@@ -1,13 +1,25 @@
 from collections import defaultdict, namedtuple
+import contextlib
 import glob
 import json
 import pickle
 import os
+import time
 from typing import Any, Dict, List, NamedTuple
 import cv2
 
 import numpy as np
 from PIL import Image
+
+time_measure_result = defaultdict(list)
+
+@contextlib.contextmanager
+def time_measure(log_name):
+    start_time = time.time()
+    yield
+    end_time = time.time()
+    time_measure_result[log_name].append((end_time - start_time) * 1000)
+    # print(log_name, end_time - start_time)
 
 class TimestampedData(NamedTuple):
     timestamp: float

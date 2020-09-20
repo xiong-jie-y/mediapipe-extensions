@@ -64,18 +64,18 @@ public:
         LOG(INFO) << "Start running the calculator graph.";
         // ASSIGN_OR_RETURN(*poller.get(),
         //                 graph.AddOutputStreamPoller(kOutputStream));
-        {
-            mediapipe::StatusOrPoller maybe_poller = std::move(graph.AddOutputStreamPoller(kOutputStream));
-            if (maybe_poller.ok())
-            {
-                poller = std::make_shared<mediapipe::OutputStreamPoller>(
-                    std::move(maybe_poller).ValueOrDie());
-            }
-            else
-            {
-                LOG(ERROR) << maybe_poller.status();
-            }
-        }
+        // {
+        //     mediapipe::StatusOrPoller maybe_poller = std::move(graph.AddOutputStreamPoller(kOutputStream));
+        //     if (maybe_poller.ok())
+        //     {
+        //         poller = std::make_shared<mediapipe::OutputStreamPoller>(
+        //             std::move(maybe_poller).ValueOrDie());
+        //     }
+        //     else
+        //     {
+        //         LOG(ERROR) << maybe_poller.status();
+        //     }
+        // }
         for (const auto &a : channels)
         {
             mediapipe::StatusOrPoller maybe_poller = std::move(graph.AddOutputStreamPoller(a));
@@ -113,6 +113,8 @@ public:
         py::buffer_info buf = input.request();
         cv::Mat mat(buf.shape[0], buf.shape[1], CV_8UC3, (unsigned char *)buf.ptr);
 
+        {
+            py::gil_scoped_release release;
         // Wrap Mat into an ImageFrame.
         auto input_frame = absl::make_unique<mediapipe::ImageFrame>(
             mediapipe::ImageFormat::SRGB, mat.cols, mat.rows,
@@ -124,6 +126,7 @@ public:
         //     mediapipe::ImageFormat::SRGB, buf.shape[0], buf.shape[1],
         //     (buf.shape[0] * buf.shape[2]), (uint8*)buf.ptr);
         return std::move(input_frame);
+        }
     }
 
     // mediapipe::Status AddInputFrameAsGpuBufferPacket(mediapipe::CalculatorGraph& Graph, char inputStreamName[], mediapipe::ImageFrame& input_frame) {
@@ -164,85 +167,68 @@ public:
     //     });
     // }
 
-    py::array_t<unsigned char> ProcessFrame(py::array_t<unsigned char> &input)
+    void ProcessFrame(py::array_t<unsigned char> &input)
     {
         if (input.ndim() != 3)
             throw std::runtime_error("1-channel image must be 2 dims ");
 
         auto input_frame = CreateImageFrameFromNumpyByCopy(input);
-
-        // Prepare and add graph input packet.
-        size_t frame_timestamp_us =
-            (double)cv::getTickCount() / (double)cv::getTickFrequency() * 1e6;
-
-        
-        LOG(INFO) << "RunGlContext";
-        auto run_graph_status = gpu_helper.RunInGlContext([this, &input_frame, &frame_timestamp_us]() -> ::mediapipe::Status {
-            // Convert ImageFrame to GpuBuffer.
-            auto texture = gpu_helper.CreateSourceTexture(*input_frame.get());
-            auto gpu_frame = texture.GetFrame<mediapipe::GpuBuffer>();
-            glFlush();
-            texture.Release();
-            // Send GPU image packet into the graph.
-            MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
-                kInputStream, mediapipe::Adopt(gpu_frame.release())
-                                  .At(mediapipe::Timestamp(frame_timestamp_us))));
-
-            return ::mediapipe::OkStatus();
-        });
-        if (!run_graph_status.ok()) {
-            LOG(INFO) << run_graph_status;
-        }
-
-        // Get the graph result packet, or stop if that fails.
-        mediapipe::Packet packet;
-        if (!poller->Next(&packet)) {
-            LOG(INFO) << "error getting packet";
-        }
-
-        // break;
         std::unique_ptr<mediapipe::ImageFrame> output_frame;
+        {
+            py::gil_scoped_release release;
 
-        LOG(INFO) << "RunFetch";
-        // Convert GpuBuffer to ImageFrame.
-        auto run_fetch_status = gpu_helper.RunInGlContext(
-            [this, &packet, &output_frame]() -> ::mediapipe::Status {
-                auto &gpu_frame = packet.Get<mediapipe::GpuBuffer>();
-                auto texture = gpu_helper.CreateSourceTexture(gpu_frame);
-                output_frame = absl::make_unique<mediapipe::ImageFrame>(
-                    mediapipe::ImageFormatForGpuBufferFormat(gpu_frame.format()),
-                    gpu_frame.width(), gpu_frame.height(),
-                    mediapipe::ImageFrame::kGlDefaultAlignmentBoundary);
-                gpu_helper.BindFramebuffer(texture);
-                const auto info =
-                    mediapipe::GlTextureInfoForGpuBufferFormat(gpu_frame.format(), 0);
-                glReadPixels(0, 0, texture.width(), texture.height(), info.gl_format,
-                             info.gl_type, output_frame->MutablePixelData());
+            // Prepare and add graph input packet.
+            size_t frame_timestamp_us =
+                (double)cv::getTickCount() / (double)cv::getTickFrequency() * 1e6;
+
+            LOG(INFO) << "RunGlContext";
+            auto run_graph_status = gpu_helper.RunInGlContext([this, &input_frame, &frame_timestamp_us]() -> ::mediapipe::Status {
+                // Convert ImageFrame to GpuBuffer.
+                auto texture = gpu_helper.CreateSourceTexture(*input_frame.get());
+                auto gpu_frame = texture.GetFrame<mediapipe::GpuBuffer>();
                 glFlush();
                 texture.Release();
+                // Send GPU image packet into the graph.
+                MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+                    kInputStream, mediapipe::Adopt(gpu_frame.release())
+                                    .At(mediapipe::Timestamp(frame_timestamp_us))));
+
                 return ::mediapipe::OkStatus();
             });
-        if (!run_fetch_status.ok()) {
-            LOG(INFO) << run_fetch_status;
-        }
-        LOG(INFO) << "Convert Image";
+            if (!run_graph_status.ok()) {
+                LOG(INFO) << run_graph_status;
+            }
 
-        // Convert back to opencv for display or saving.
-        cv::Mat output_frame_mat = mediapipe::formats::MatView(output_frame.get());
+            // // Get the graph result packet, or stop if that fails.
+            // mediapipe::Packet packet;
+            // if (!poller->Next(&packet)) {
+            //     LOG(INFO) << "error getting packet";
+            // }
 
-        int size = output_frame_mat.channels() * output_frame_mat.size().width * output_frame_mat.size().height;
-        py::array_t<unsigned char> result(size);
-        py::buffer_info buf2 = result.request();
-
-        auto pt = output_frame_mat.data;
-        unsigned char *dstPt = (unsigned char *)buf2.ptr;
-
-        for (int i = 0; i < size; i++)
-        {
-            dstPt[i] = pt[i];
-        }
-
-        LOG(INFO) << "Getting other outputs";
+            // LOG(INFO) << "RunFetch";
+            // // Convert GpuBuffer to ImageFrame.
+            // auto run_fetch_status = gpu_helper.RunInGlContext(
+            //     [this, &packet, &output_frame]() -> ::mediapipe::Status {
+            //         auto &gpu_frame = packet.Get<mediapipe::GpuBuffer>();
+            //         auto texture = gpu_helper.CreateSourceTexture(gpu_frame);
+            //         output_frame = absl::make_unique<mediapipe::ImageFrame>(
+            //             mediapipe::ImageFormatForGpuBufferFormat(gpu_frame.format()),
+            //             gpu_frame.width(), gpu_frame.height(),
+            //             mediapipe::ImageFrame::kGlDefaultAlignmentBoundary);
+            //         gpu_helper.BindFramebuffer(texture);
+            //         const auto info =
+            //             mediapipe::GlTextureInfoForGpuBufferFormat(gpu_frame.format(), 0);
+            //         glReadPixels(0, 0, texture.width(), texture.height(), info.gl_format,
+            //                     info.gl_type, output_frame->MutablePixelData());
+            //         glFlush();
+            //         texture.Release();
+            //         return ::mediapipe::OkStatus();
+            //     });
+            // if (!run_fetch_status.ok()) {
+            //     LOG(INFO) << run_fetch_status;
+            // }
+            // LOG(INFO) << "Convert Image";
+                    LOG(INFO) << "Getting other outputs";
         // Get other channels.
         for (const auto &[key, poller] : channel_name_to_poller_)
         {
@@ -259,7 +245,25 @@ public:
             }
         }
 
-        return result;
+        }
+
+        // Convert back to opencv for display or saving.
+        // cv::Mat output_frame_mat = mediapipe::formats::MatView(output_frame.get());
+
+        // int size = output_frame_mat.channels() * output_frame_mat.size().width * output_frame_mat.size().height;
+        // py::array_t<unsigned char> result(size);
+        // py::buffer_info buf2 = result.request();
+
+        // auto pt = output_frame_mat.data;
+        // unsigned char *dstPt = (unsigned char *)buf2.ptr;
+
+        // for (int i = 0; i < size; i++)
+        // {
+        //     dstPt[i] = pt[i];
+        // }
+
+
+        // return result;
     }
     // template <typename T>
     // const T &GetLatestObject(std::string name)
