@@ -1,7 +1,9 @@
 """This is the perception server that accept RGBD camera input 
 and output data through ipc (currently zeromq) in the proto message format..
 """
+import ctypes
 import os
+from pikapi.logging import time_measure
 from threading import Thread
 import threading
 from numpy.core.fromnumeric import mean
@@ -30,6 +32,21 @@ from pikapi.core.camera import IMUInfo
 from pikapi.recognizers.geometry.face import FaceGeometryRecognizer
 from pikapi.recognizers.geometry.hand import HandGestureRecognizer
 from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
+
+def visualize_image(image_buf, width, height, buf_ready, end_flag):
+    target_image = np.empty((height, width, 3), dtype=np.uint8)
+    while True:
+        buf_ready.wait()
+        target_image[:,:,:] = np.reshape(image_buf, (height, width, 3))
+        buf_ready.clear()
+
+        cv2.imshow("Frame", target_image)
+
+        pressed_key = cv2.waitKey(2)
+        if pressed_key == ord("a"):
+            # import IPython; IPython.embed()
+            end_flag.value = True
+            break
 
 @click.command()
 @click.option('--camera-id', '-c', default=0, type=int)
@@ -71,10 +88,28 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
 
     rotation_estimator = RotationEstimator(0.98, True)
 
+    import multiprocessing
+    import multiprocessing.sharedctypes
+    from multiprocessing.sharedctypes import Value, Array
+
+    end_flag = Value(ctypes.c_bool, False)
+
+    WIDTH = (640 * 2)
+    HEIGHT = 360
+    buf1 = multiprocessing.sharedctypes.RawArray('B', HEIGHT * WIDTH*3)
+    # buf_dict = {"buf": buf1}
+    buf_ready = multiprocessing.Event()
+    buf_ready.clear()
+    p1=multiprocessing.Process(target=visualize_image, args=(buf1,WIDTH, HEIGHT, buf_ready, end_flag), daemon=True)
+    p1.start()
+
     import pikapi.logging
     last_run = time.time()
     from collections import deque
     acc_vectors = deque([])
+    
+
+    frame_times = []
     try:
         while(True):
             last_run = time.time()
@@ -169,17 +204,28 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
             interval = time.time() - last_run
             estimated_fps = 1.0 / interval
             # print(estimated_fps)
+            frame_times.append(interval * 1000)
             cv2.putText(target_image, f"Frame Time{interval * 1000}[ms]", (10, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
                         (255, 255, 255), 1, cv2.LINE_AA)
             cv2.putText(target_image, f"FPS: {estimated_fps}", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
                         (255, 255, 255), 1, cv2.LINE_AA)
 
             if not demo_mode:
-                target_image = np.hstack((target_image, depth_colored))
+                with time_measure("Create Stack"):
+                    target_image = np.hstack((target_image, depth_colored))
 
-            cv2.imshow("Frame", target_image)
-            if face_recognizer.last_face_image is not None:
-                cv2.imshow("Face Image", face_recognizer.last_face_image)
+            
+            with time_measure("CopyImage"):
+                buf_ready.clear()
+                memoryview(buf1).cast('B')[:] = memoryview(target_image).cast('B')[:]
+                # buf_dict["buf"] = target_image
+                # memoryview(buf1).cast('B')[:] = target_image
+                buf_ready.set()
+            # print("CopyImage", np.mean(pikapi.logging.time_measure_result["CopyImage"]))
+            # print("CreateStack", np.mean(pikapi.logging.time_measure_result["Create Stack"]))
+
+            # if face_recognizer.last_face_image is not None:
+            #     cv2.imshow("Face Image", face_recognizer.last_face_image)
             last_run = time.time()
 
             # print(effective_gesture_texts)
@@ -197,11 +243,11 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
             data = ["PerceptionState".encode('utf-8'), perc_state.SerializeToString()]
             publisher.send_multipart(data)
 
-            pressed_key = cv2.waitKey(2)
-            if pressed_key == ord("a"):
-                # import IPython; IPython.embed()
+            if end_flag.value:
                 import json
-                json.dump(dict(pikapi.logging.time_measure_result), open(
+                perf_dict = dict(pikapi.logging.time_measure_result)
+                perf_dict['frame_ms'] = frame_times
+                json.dump(perf_dict, open(
                     f"{run_name}_performance.json", "w"))
                 break
 

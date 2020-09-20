@@ -214,21 +214,10 @@ class FaceGeometryRecognizer:
         with time_measure("Process Face Others"):
             multi_face_landmarks = [self.runner.get_normalized_landmark_list(
                 "face_landmarks_with_iris")]
-            left_mm = self.runner.get_float("left_iris_depth_mm")
-            right_mm = self.runner.get_float("right_iris_depth_mm")
-            # if left_mm is not None and right_mm is not None:
-            #     # cv2.putText(blank_image, str(int((left_mm + right_mm)/2)) + "[mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
-            #     #     (255, 255, 255), 1, cv2.LINE_AA)
-            #     cv2.putText(visualize_image, f"Left: {int(left_mm)} [mm]", (0, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
-            #                 (255, 255, 255), 2, cv2.LINE_AA)
-            #     cv2.putText(visualize_image, f"Right: {int(right_mm)} [mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
-            #                 (255, 255, 255), 1, cv2.LINE_AA)
 
             center = None
             center_to_nose_direction = None
-            if len(multi_face_landmarks) != 0 and (
-                left_mm is not None and right_mm is not None
-            ):
+            if len(multi_face_landmarks) != 0:
                 face_landmark = np.array(multi_face_landmarks[0])
                 from pikapi.logging import TimestampedData
                 if len(face_landmark) != 0:
