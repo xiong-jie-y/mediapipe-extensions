@@ -3,6 +3,7 @@ and output data through ipc (currently zeromq) in the proto message format..
 """
 import ctypes
 import os
+from pikapi.gui.visualize_gui import VisualizeGUI
 from pikapi.logging import time_measure
 from threading import Thread
 import threading
@@ -33,28 +34,14 @@ from pikapi.recognizers.geometry.face import FaceGeometryRecognizer
 from pikapi.recognizers.geometry.hand import HandGestureRecognizer
 from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
 
-def visualize_image(image_buf, width, height, buf_ready, end_flag):
-    target_image = np.empty((height, width, 3), dtype=np.uint8)
-    while True:
-        buf_ready.wait()
-        target_image[:,:,:] = np.reshape(image_buf, (height, width, 3))
-        buf_ready.clear()
-
-        cv2.imshow("Frame", target_image)
-
-        pressed_key = cv2.waitKey(2)
-        if pressed_key == ord("a"):
-            # import IPython; IPython.embed()
-            end_flag.value = True
-            break
-
 @click.command()
 @click.option('--camera-id', '-c', default=0, type=int)
 @click.option('--run-name', default="general")
 @click.option('--relative-depth', is_flag=True)
 @click.option('--use-realsense', is_flag=True)
 @click.option('--demo-mode', is_flag=True)
-def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
+@click.option('--gui-single-process', is_flag=True)
+def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode, gui_single_process):
     intrinsic_matrix = get_intrinsic_matrix(camera_id)
 
     face_recognizer = FaceGeometryRecognizer(intrinsic_matrix)
@@ -88,20 +75,10 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
 
     rotation_estimator = RotationEstimator(0.98, True)
 
-    import multiprocessing
-    import multiprocessing.sharedctypes
-    from multiprocessing.sharedctypes import Value, Array
-
-    end_flag = Value(ctypes.c_bool, False)
-
     WIDTH = (640 * 2)
     HEIGHT = 360
-    buf1 = multiprocessing.sharedctypes.RawArray('B', HEIGHT * WIDTH*3)
-    # buf_dict = {"buf": buf1}
-    buf_ready = multiprocessing.Event()
-    buf_ready.clear()
-    p1=multiprocessing.Process(target=visualize_image, args=(buf1,WIDTH, HEIGHT, buf_ready, end_flag), daemon=True)
-    p1.start()
+
+    visualizer = VisualizeGUI(width=WIDTH, height=HEIGHT, run_multiprocess=not gui_single_process)
 
     import pikapi.logging
     last_run = time.time()
@@ -216,11 +193,7 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
 
             
             with time_measure("CopyImage"):
-                buf_ready.clear()
-                memoryview(buf1).cast('B')[:] = memoryview(target_image).cast('B')[:]
-                # buf_dict["buf"] = target_image
-                # memoryview(buf1).cast('B')[:] = target_image
-                buf_ready.set()
+                visualizer.visualize_image(target_image)
             # print("CopyImage", np.mean(pikapi.logging.time_measure_result["CopyImage"]))
             # print("CreateStack", np.mean(pikapi.logging.time_measure_result["Create Stack"]))
 
@@ -243,7 +216,7 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode):
             data = ["PerceptionState".encode('utf-8'), perc_state.SerializeToString()]
             publisher.send_multipart(data)
 
-            if end_flag.value:
+            if visualizer.end_issued():
                 import json
                 perf_dict = dict(pikapi.logging.time_measure_result)
                 perf_dict['frame_ms'] = frame_times

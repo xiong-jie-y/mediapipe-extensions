@@ -27,7 +27,7 @@ from pikapi.core.camera import IMUInfo
 NOSE_INDEX = 4
 
 
-def calculate_pose(denormalized_landmark):
+def calculate_pose(denormalized_landmark: np.ndarray):
     """Calculate pose information in some forms."""
     # Calculate two of the head axis.
     center = np.mean(denormalized_landmark, axis=0)
