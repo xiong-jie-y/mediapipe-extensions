@@ -2,6 +2,9 @@
 and output data through ipc (currently zeromq) in the proto message format..
 """
 import contextlib
+import ctypes
+from multiprocessing import Process, Queue, Value
+from pikapi.recognizers.base import PerformanceMeasurable
 from pikapi.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
@@ -21,6 +24,7 @@ from pikapi import graph_runner
 import click
 
 import pikapi
+import pikapi.logging
 import pikapi.mediapipe_util as pmu
 
 import pyrealsense2 as rs
@@ -29,10 +33,13 @@ import pyrealsense2 as rs
 from pikapi.utils.landmark import *
 from pikapi.core.camera import IMUInfo
 
-class HandGestureRecognizer():
+time_measure = None
+
+class HandGestureRecognizer(PerformanceMeasurable):
     """Calculate geometrical properties of hand.
     """
     def __init__(self, intrinsic_matrix):
+        super().__init__()
         self.hand_recognizer = pikapi.graph_runner.GraphRunner(
             "pikapi/graphs/multi_hand_tracking_gpu.pbtxt", [
                 "gesture_texts", "multi_hand_landmarks", "multi_handedness"], {})
@@ -42,6 +49,7 @@ class HandGestureRecognizer():
         self.intrinsic_matrix = intrinsic_matrix
 
         self.record_trajectory = False
+        
 
     def _get_achimuitehoi_gesture(self, landmark_list: np.ndarray,
                                   width: int, height: int, visualize_image: np.ndarray, min_x: int, min_y: int) -> str:
@@ -177,11 +185,11 @@ class HandGestureRecognizer():
         width = rgb_image.shape[1]
         height = rgb_image.shape[0]
 
-        with time_measure("Run Hand Graph"):
+        with self.time_measure("Run Hand Graph"):
         # Estimate hand landmarks and gesture text
             self.hand_recognizer.process_frame(rgb_image)
 
-        with time_measure("Run Hand Postprocess"):
+        with self.time_measure("Run Hand Postprocess"):
             hand_landmarks = np.array(
                 self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks"))
             gesture_texts = self.hand_recognizer.get_string_array("gesture_texts")
@@ -262,3 +270,58 @@ class HandGestureRecognizer():
         return hand_states
     def get_state(self, *args, result={}):
         result['hand_states'] = self.get_hand_states(*args)
+
+class HandRecognizerProcess(Process):
+    def __init__(self, rgb_image, depth_image, visualize_image, intrinsic_matrix):
+        super(HandRecognizerProcess, self).__init__()
+        self.intrinsic_matrix = intrinsic_matrix
+        self.queue = Queue()
+        self.result_queue = Queue()
+        self.finish_flag = Value(ctypes.c_bool, False)
+        self.really_finish_flag = Value(ctypes.c_bool, False)
+        self.perf_queue = Queue()
+        self.latest_face_state = None
+        self.rgb_image = rgb_image
+        self.depth_image=  depth_image
+        self.visualize_image = visualize_image
+        # self.md = md
+        # self.manager = manager
+        # self.dict = {}
+    
+    def run(self):
+        hand_gesture_recognizer = HandGestureRecognizer(self.intrinsic_matrix)
+        # pikapi.logging.manager_dict = self.md
+        # pikapi.logging.manager = self.manager
+
+        imu_info = None
+        last_processed = time.time()
+        while not self.finish_flag.value:
+            if (time.time() - last_processed) < 0.040:
+                continue
+    
+            # print("ahoooo")
+            if not self.queue.empty():
+                task = self.queue.get()
+                if task is None:
+                    continue
+
+                # print(time.time() - last_processed)
+                # if (time.time() - last_processed) < 0.0013:
+                #     continue
+                imu_info = task
+
+            if imu_info is not None:
+                last_processed = time.time()
+                ss = hand_gesture_recognizer.get_hand_states(
+                    np.frombuffer(memoryview(self.rgb_image), dtype=np.uint8).reshape((360, 640, 3)),
+                    np.frombuffer(memoryview(self.depth_image), dtype=np.uint16).reshape((360, 640)),
+                    np.frombuffer(memoryview(self.visualize_image), dtype=np.uint8).reshape((360, 640, 3)),
+                    )
+                # self.result_queue.put(100)
+                self.result_queue.put([s.SerializeToString() for s in ss])
+                # self.perf_queue.put(1000)
+
+        print("Finished")
+        self.perf_queue.put(dict(hand_gesture_recognizer.time_measure_result))
+        # while not self.really_finish_flag:
+        #     pass

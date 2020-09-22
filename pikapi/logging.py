@@ -2,6 +2,8 @@ from collections import defaultdict, namedtuple
 import contextlib
 import glob
 import json
+from multiprocessing import Manager
+from multiprocessing.managers import BaseManager
 import pickle
 import os
 import time
@@ -13,12 +15,50 @@ from PIL import Image
 
 time_measure_result = defaultdict(list)
 
+manager = None
+manager_dict = None
+
+class PerfLogger():
+    def __init__(self):
+        self.time_measure_result = defaultdict(list)
+
+    @contextlib.contextmanager
+    def time_measure(self, log_name):
+        start_time = time.time()
+        yield
+        end_time = time.time()
+        time_measure_result[log_name].append((end_time - start_time) * 1000)
+        # if log_name not in manager_dict:
+        #     manager_dict[log_name] = manager.list()
+        # manager_dict[log_name].append((end_time - start_time) * 1000)
+
+class MyManager(BaseManager):
+    pass
+
+def create_logger_manager():
+
+    MyManager.register('PerfLogger', PerfLogger)
+    manager = MyManager()
+    manager.start()
+    return manager
+
+
+def create_mp_logger():
+    global manager
+    global manager_dict
+    manager = Manager()
+    manager_dict = manager.dict()
+    return manager, manager_dict
+
 @contextlib.contextmanager
 def time_measure(log_name):
     start_time = time.time()
     yield
     end_time = time.time()
     time_measure_result[log_name].append((end_time - start_time) * 1000)
+    # if log_name not in manager_dict:
+    #     manager_dict[log_name] = manager.list()
+    # manager_dict[log_name].append((end_time - start_time) * 1000)
     # print(log_name, end_time - start_time)
 
 class TimestampedData(NamedTuple):

@@ -14,5 +14,6 @@ def draw_performance(filename):
 
     st.write(fig)
 
-draw_performance("with_thread_performance.json")
-draw_performance("single_thread_performance.json")
+# draw_performance("multiprocess_performance.json")
+# draw_performance("singleprocess_performance.json")
+draw_performance("general_performance.json")

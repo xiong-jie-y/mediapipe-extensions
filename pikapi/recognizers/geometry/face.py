@@ -1,3 +1,6 @@
+import ctypes
+from multiprocessing import Process, Queue, Value
+from pikapi.recognizers.base import PerformanceMeasurable
 from pikapi.gui.visualize_gui import VisualizeGUI
 from pikapi.logging import time_measure
 from numpy.core.fromnumeric import mean
@@ -18,6 +21,7 @@ from pikapi import graph_runner
 import click
 
 import pikapi
+import pikapi.logging
 import pikapi.mediapipe_util as pmu
 
 import pyrealsense2 as rs
@@ -48,11 +52,19 @@ def calculate_pose(denormalized_landmark: np.ndarray):
     rot = Rotation.align_vectors([right, up, front], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     return rot, center_to_nose_direction, up_direction
 
-class FaceGeometryRecognizer:
+class IntrinsicMatrix():
+    def __init__(self, intrinsic_matrix):
+        self.fx = intrinsic_matrix.fx
+        self.fy = intrinsic_matrix.fy
+        self.ppx = intrinsic_matrix.ppx
+        self.ppy = intrinsic_matrix.ppy
+
+class FaceGeometryRecognizer(PerformanceMeasurable):
     """Calculate geometrical properties of face.
     """
 
     def __init__(self, intrinsic_matrix):
+        super().__init__()
         focal_length = intrinsic_matrix.fx
         self.runner = pikapi.graph_runner.GraphRunner(
             "pikapi/graphs/iris_tracking_gpu.pbtxt", [
@@ -209,10 +221,10 @@ class FaceGeometryRecognizer:
         width = rgb_image.shape[1]
         height = rgb_image.shape[0]
 
-        with time_measure("Run Face Graph"):
+        with self.time_measure("Run Face Graph"):
             self.runner.process_frame(rgb_image)
 
-        with time_measure("Run Face Postprocess"):
+        with self.time_measure("Run Face Postprocess"):
             multi_face_landmarks = [self.runner.get_normalized_landmark_list(
                 "face_landmarks_with_iris")]
 
@@ -278,7 +290,7 @@ class FaceGeometryRecognizer:
                         cv2.putText(face_image, str(i), (draw_x, draw_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
                                     (255, 255, 255), 1, cv2.LINE_AA)
 
-                    with time_measure("Calc Face Direction"):
+                    with self.time_measure("Calc Face Direction"):
                         direction = self._get_face_direction(
                             face_landmark, width, height, visualize_image, face_image)
                     # direction = self._adjust_by_imu(
@@ -303,5 +315,51 @@ class FaceGeometryRecognizer:
                 pose=ps.FacePose(rotation_vector=center_to_nose_direction),
                 relation_to_monitor=relation_to_monitor
             )
-    def get_state(self, *args, result={}):
-        result['face_state'] = self.get_face_state(*args)
+
+
+class FaceRecognizerProcess(Process):
+    def __init__(self, rgb_image, depth_image, visualize_image, intrinsic_matrix):
+        super(FaceRecognizerProcess, self).__init__()
+        self.intrinsic_matrix = intrinsic_matrix
+        self.queue = Queue()
+        self.result_queue = Queue()
+        self.latest_face_state = None
+        self.finish_flag = Value(ctypes.c_bool, False)
+        self.perf_queue = Queue()
+        self.rgb_image = rgb_image
+        self.depth_image=  depth_image
+        self.visualize_image = visualize_image
+
+    def run(self):
+        # print("startfjkldjfdkjfdkfdjlkfdlsda")
+        recognizer = FaceGeometryRecognizer(self.intrinsic_matrix)
+
+        # pikapi.logging.manager_dict = md
+        # pikapi.logging.manager = manager
+        # print("startfjkldjfdkjfdkfdjlkfdlsda")
+
+        latest_imu_info = None
+        last_process = time.time()
+        while not self.finish_flag.value:
+            if (time.time() - last_process) < 0.040:
+                continue
+
+            if not self.queue.empty():
+                task = self.queue.get()
+                if task is None:
+                    continue
+                latest_imu_info = task
+
+            if latest_imu_info is not None:
+                last_process = time.time()
+                face_state = recognizer.get_face_state(
+                    np.frombuffer(memoryview(self.rgb_image), dtype=np.uint8).reshape((360, 640, 3)),
+                    np.frombuffer(memoryview(self.depth_image), dtype=np.uint16).reshape((360, 640)),
+                    np.frombuffer(memoryview(self.visualize_image), dtype=np.uint8).reshape((360, 640, 3)),
+                    latest_imu_info
+                    )
+                self.result_queue.put(face_state.SerializeToString())
+                
+
+        self.perf_queue.put(dict(recognizer.time_measure_result))
+        print("Finish")

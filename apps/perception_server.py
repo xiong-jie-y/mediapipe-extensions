@@ -2,9 +2,11 @@
 and output data through ipc (currently zeromq) in the proto message format..
 """
 import ctypes
+import multiprocessing
+from multiprocessing import Queue
 import os
 from pikapi.gui.visualize_gui import VisualizeGUI, create_visualize_gui_manager
-from pikapi.logging import time_measure
+from pikapi.logging import create_logger_manager, create_mp_logger, time_measure
 from threading import Thread
 import threading
 from numpy.core.fromnumeric import mean
@@ -30,9 +32,10 @@ import pikapi.mediapipe_util as pmu
 import pyrealsense2 as rs
 from pikapi.utils.realsense import *
 from pikapi.core.camera import IMUInfo
-from pikapi.recognizers.geometry.face import FaceGeometryRecognizer
-from pikapi.recognizers.geometry.hand import HandGestureRecognizer
+from pikapi.recognizers.geometry.face import FaceGeometryRecognizer, FaceRecognizerProcess, IntrinsicMatrix
+from pikapi.recognizers.geometry.hand import HandGestureRecognizer, HandRecognizerProcess
 from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
+
 
 @click.command()
 @click.option('--camera-id', '-c', default=0, type=int)
@@ -43,13 +46,13 @@ from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
 @click.option('--gui-single-process', is_flag=True)
 @click.option('--perception-single-process', is_flag=True)
 def cmd(
-    camera_id, run_name, relative_depth, use_realsense, 
-    demo_mode, gui_single_process, perception_single_process):
+        camera_id, run_name, relative_depth, use_realsense,
+        demo_mode, gui_single_process, perception_single_process):
     intrinsic_matrix = get_intrinsic_matrix(camera_id)
 
-    face_recognizer = FaceGeometryRecognizer(intrinsic_matrix)
-    hand_gesture_recognizer = HandGestureRecognizer(intrinsic_matrix)
-    body_recognizer = BodyGeometryRecognizer(intrinsic_matrix)
+    multiprocessing.set_start_method('spawn')
+
+    # body_recognizer = BodyGeometryRecognizer(intrinsic_matrix)
     import zmq
     context = zmq.Context()
     publisher = context.socket(zmq.PUB)
@@ -78,26 +81,58 @@ def cmd(
 
     rotation_estimator = RotationEstimator(0.98, True)
 
-    WIDTH = (640 * 2)
+    WIDTH = 640
     HEIGHT = 360
 
     # Should be created with manager when paralle.
     manager = None
     if gui_single_process:
-        visualizer = VisualizeGUI(width=WIDTH, height=HEIGHT, run_multiprocess=not gui_single_process)
+        visualizer = VisualizeGUI(width=WIDTH, height=HEIGHT,
+                                  run_multiprocess=not gui_single_process, demo_mode=demo_mode)
     else:
-        manager = create_visualize_gui_manager()
-        visualizer = manager.VisualizeGUI(width=WIDTH, height=HEIGHT)
+        shared_gray = multiprocessing.sharedctypes.RawArray('B', 360 * 640*3)
+        # manager = create_visualize_gui_manager()
+        # visualizer = manager.VisualizeGUI(width=WIDTH, height=HEIGHT, demo_mode=demo_mode)
+        visualizer = VisualizeGUI(width=WIDTH, height=HEIGHT, demo_mode=demo_mode)
+        # vis_server = manager.VisServer(640, 360)
+
+        target_image_buf = visualizer.get_image_buf_internal()
+        depth_image_shared = visualizer.get_depth_image_buf_internal()
+
+    # queue = Queue()
+    # result_queue = Queue()
+
+    # manager, manager_dict = create_mp_logger()
+    # logger_manager = create_logger_manager()
+    # perf_logger = logger_manager.PerfLogger()
+    # face_processor = multiprocessing.Process(target=face_recognize,
+    #                                          args=(
+    #                                              queue, result_queue, shared_gray, depth_image_shared, 
+    #                                              target_image_buf, IntrinsicMatrix(intrinsic_matrix)
+    #                                              ))
+    face_processor = FaceRecognizerProcess(shared_gray, depth_image_shared,
+                                           target_image_buf, IntrinsicMatrix(intrinsic_matrix))
+    face_processor.start()
+
+    hand_processor = HandRecognizerProcess(shared_gray, depth_image_shared,
+                                           target_image_buf, IntrinsicMatrix(intrinsic_matrix))
+    hand_processor.start()
 
     import pikapi.logging
     last_run = time.time()
     from collections import deque
     acc_vectors = deque([])
-    
+
+    latest_hand_states = None
+    latest_face_state = None
 
     frame_times = []
     try:
         while(True):
+            # print( (time.time() - last_run))
+            # if (time.time() - last_run) < 0.100:
+            #     continue
+
             with time_measure("Frame Fetch"):
                 last_run = time.time()
                 current_time = time.time()
@@ -134,6 +169,21 @@ def cmd(
                 frame = np.asanyarray(color_frame.get_data())
                 depth_image = np.asanyarray(depth_frame.get_data())
 
+                # depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(
+                #     depth_image, alpha=0.08), cv2.COLORMAP_JET)
+
+                # cv2.imshow("orig", frame)
+                # cv2.waitKey(2)
+
+                # gray = np.frombuffer(memoryview(shared_gray), dtype=np.uint8).reshape((360, 640, 3))
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                memoryview(shared_gray).cast('B')[:] = memoryview(gray).cast('B')[:]
+                # gray_shared = np.frombuffer(memoryview(shared_gray), dtype=np.uint8).reshape((360, 640, 3))
+
+            with time_measure("Pass Image"):
+                # import IPython; IPython.embed()
+                visualizer.pass_image(frame, depth_image)
+
                 # ret, frame = cap.read()
                 # if frame is None:
                 #     break
@@ -144,34 +194,29 @@ def cmd(
                 # depth_image[depth_image > 2500] = 0
                 # depth_image[depth_image == 0] = 0
 
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                # Prepare depth image for dispaly.
-                depth_image_cp = np.copy(depth_image)
-                depth_image_cp[depth_image_cp > 2500] = 0
-                depth_image_cp[depth_image_cp == 0] = 0
-                depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(
-                    depth_image_cp, alpha=0.08), cv2.COLORMAP_JET)
+            # with time_measure("Pass Images"):
+            #     memoryview(vis_server.get_shared_memory()).cast('B')[:] = memoryview(frame).cast('B')[:]
+                # vis_server.pass_image(frame, depth_image)
                 # depth_colored = cv2.convertScaleAbs(depth_image, alpha=0.08)
 
             if demo_mode:
                 target_image = depth_colored
             else:
-                target_image = frame
-            
+                target_image = visualizer.get_image_buf()
+
             with time_measure("Perception"):
                 if perception_single_process:
                     run_on_threads = False
                     if run_on_threads:
                         result = {}
-                        face_th = threading.Thread(target=face_recognizer.get_state, \
-                                args=(gray, depth_image, target_image, imu_info), kwargs={"result": result})
+                        face_th = threading.Thread(target=face_recognizer.get_state,
+                                                   args=(gray, depth_image, target_image, imu_info), kwargs={"result": result})
                         face_th.start()
-                        hand_th = threading.Thread(target=hand_gesture_recognizer.get_state, \
-                                args=(gray, depth_image, target_image), kwargs={"result": result})
+                        hand_th = threading.Thread(target=hand_gesture_recognizer.get_state,
+                                                   args=(gray, depth_image, target_image), kwargs={"result": result})
                         hand_th.start()
-                        body_th = threading.Thread(target=body_recognizer.get_state, \
-                                args=(gray, depth_image, target_image), kwargs={"result": result})
+                        body_th = threading.Thread(target=body_recognizer.get_state,
+                                                   args=(gray, depth_image, target_image), kwargs={"result": result})
                         body_th.start()
 
                         face_th.join()
@@ -192,7 +237,36 @@ def cmd(
                             body_recognizer.get_body_state(gray, depth_image, target_image)
                         # print(pose_landmark_list)
                 else:
-                    pass
+                    result = {}
+                    # face_processor.queue.put((shared_gray, depth_image_shared, target_image_buf, imu_info))
+                    face_processor.queue.put(imu_info)
+                    hand_processor.queue.put(imu_info)
+
+                    # if result_queue.get():
+                    #     pass
+
+                    # if hand_processor.result_queue.get():
+                    #     pass
+
+                    # import IPython; IPython.embed()
+
+                    # face_th = multiprocessing.Process(target=face_recognizer.get_state, \
+                    #         args=(shared_gray, depth_image_shared, target_image_buf, imu_info), kwargs={"result": result})
+                    # face_th.start()
+                    # hand_th = multiprocessing.Process(target=hand_gesgture_recognizer.get_state, \
+                    #         args=(gray_shared, depth_image_shared, taret_image), kwargs={"result": result})
+                    # hand_th.start()
+                    # body_th = multiprocessing.Process(target=body_recognizer.get_state, \
+                    #         args=(gray_shared, depth_image_shared, target_image), kwargs={"result": result})
+                    # body_th.start()
+
+                    # face_th.join()
+                    # hand_th.join()
+                    # body_th.join()
+
+                    # face_state = result['face_state']
+                    # hand_states = result['hand_states']
+                    # body_state = result['body_state']
 
             interval = time.time() - last_run
             estimated_fps = 1.0 / interval
@@ -203,27 +277,44 @@ def cmd(
             cv2.putText(target_image, f"FPS: {estimated_fps}", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
                         (255, 255, 255), 1, cv2.LINE_AA)
 
-            if not demo_mode:
-                with time_measure("Create Stack"):
-                    target_image = np.hstack((target_image, depth_colored))
-
-            
-            with time_measure("CopyImage"):
-                visualizer.visualize_image(target_image)
             # print("CopyImage", np.mean(pikapi.logging.time_measure_result["CopyImage"]))
             # print("CreateStack", np.mean(pikapi.logging.time_measure_result["Create Stack"]))
+
+            TIMEOUT_S = 0.001
+            # got_new_result = False
+
+            # Wait both result. Just want to run paralle.
+            # if not face_processor.result_queue.empty():
+            result = face_processor.result_queue.get()
+            latest_face_state = ps.Face()
+            latest_face_state.ParseFromString(result)
+            # got_new_result = True
+
+            # if not hand_processor.result_queue.empty():
+            result = hand_processor.result_queue.get()
+            latest_hand_states = []
+            for r in result:
+                hand = ps.Hand()
+                hand.ParseFromString(r)
+                latest_hand_states.append(hand)
+            # got_new_result = True
+
+            # if got_new_result:
+            visualizer.draw()
 
             # if face_recognizer.last_face_image is not None:
             #     cv2.imshow("Face Image", face_recognizer.last_face_image)
             last_run = time.time()
 
+            # import IPython; IPython.embed()
+
             # print(effective_gesture_texts)
             perc_state = ps.PerceptionState(
                 people=[
                     ps.Person(
-                        face=face_state,
-                        hands=hand_states,
-                        body=body_state,
+                        face=latest_face_state,
+                        hands=latest_hand_states,
+                        # body=None,
                     )
                 ]
             )
@@ -234,10 +325,32 @@ def cmd(
 
             if visualizer.end_issued():
                 import json
+                # import IPython
+                # IPython.embed()
+
                 perf_dict = dict(pikapi.logging.time_measure_result)
                 perf_dict['frame_ms'] = frame_times
+
+                face_processor.finish_flag.value = True
+                hand_processor.finish_flag.value = True
+
+                print("finish requested")
+                hand_perf = hand_processor.perf_queue.get()
+                if hand_perf:
+                    for key, val in hand_perf.items():
+                        perf_dict[key] = val
+                face_perf = face_processor.perf_queue.get()
+                if face_perf:
+                    for key, val in face_perf.items():
+                        perf_dict[key] = val
+                # hand_processor.really_finish_flag.value = True
+
                 json.dump(perf_dict, open(
                     f"{run_name}_performance.json", "w"))
+
+                hand_processor.kill()
+                face_processor.kill()
+                    
                 break
 
     finally:
