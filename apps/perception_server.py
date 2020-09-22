@@ -49,6 +49,9 @@ def cmd(
         camera_id, run_name, relative_depth, use_realsense,
         demo_mode, gui_single_process, perception_single_process):
     intrinsic_matrix = get_intrinsic_matrix(camera_id)
+    # Reason is unknown, but waiting at some point is necessary.
+    # less than 0.1 was not enough from experiment.
+    time.sleep(0.1)
 
     multiprocessing.set_start_method('spawn')
 
@@ -84,7 +87,7 @@ def cmd(
     WIDTH = 640
     HEIGHT = 360
 
-    # Should be created with manager when paralle.
+    # Should be created with manager when parallel.
     manager = None
     if gui_single_process:
         visualizer = VisualizeGUI(width=WIDTH, height=HEIGHT,
@@ -101,6 +104,26 @@ def cmd(
 
     # queue = Queue()
     # result_queue = Queue()
+
+    # cap = cv2.VideoCapture(camera_id)
+    # while True:
+    #     ret, frame = cap.read()
+    #     if frame is None:
+    #         break
+        
+    #     cv2.imshow("Test", frame)
+    #     cv2.waitKey(3)
+    # last_shot = time.time()
+    # while True:
+    #     frames = pipeline.wait_for_frames()
+    #     aligned_frames = align.process(frames)
+    #     color_frame = aligned_frames.get_color_frame()
+    #     depth_frame = aligned_frames.get_depth_frame()
+    #     frame = np.asanyarray(color_frame.get_data())
+    #     cv2.imshow("Test", frame)
+    #     if time.time() - last_shot > 2:
+    #         cv2.imwrite('lena_opencv_red.jpg', frame)
+    #     cv2.waitKey(3)
 
     # manager, manager_dict = create_mp_logger()
     # logger_manager = create_logger_manager()
@@ -352,8 +375,8 @@ def cmd(
                 face_processor.kill()
                     
                 break
-
     finally:
+        print("Stopping Realsense.")
         # ストリーミング停止
         pipeline.stop()
 
