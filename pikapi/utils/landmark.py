@@ -1,3 +1,4 @@
+from pikapi.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time
@@ -34,6 +35,46 @@ import pyrealsense2 as rs
 #     landmark_list_copy = np.copy(landmark_list)
 #     landmark_list_copy[:, 0] *= width
 #     landmark_list_copy[:, 1] *= height
+from numba import jit
+
+@jit(nopython=True)
+def get_camera_coord_landmarks_numba(
+        normalized_landmark_list: np.ndarray, width: int, height: int,
+        depth_image: np.ndarray, ppx, ppy, fx, fy):
+    points_c = np.zeros_like(normalized_landmark_list)
+    for i in range(0, len(normalized_landmark_list)):
+        point = normalized_landmark_list[i]
+        # These points are outside of the depth images.
+        if point[0] < 0.0 or point[0] > 1.0 or point[1] < 0.0 or point[1] > 1.0:
+            # points_c.append([point[0], point[1], None])
+            points_c[i][0] = point[0]
+            points_c[i][1] = point[1]
+            points_c[i][2] = np.nan
+            continue
+
+        x_pix = int(point[1] * height)
+        y_pix = int(point[0] * width)
+        depth_value = depth_image[x_pix, y_pix]
+
+        # This depth value is invalid.
+        if depth_value == 0:
+            points_c[i][0] = point[0]
+            points_c[i][1] = point[1]
+            points_c[i][2] = np.nan
+            continue
+
+        # Get 3d coordinate from depth.
+        x = depth_value * (x_pix - ppx) / fx
+        y = depth_value * (y_pix - ppy) / fy
+        # points_c.append([x, y, depth_value])
+        points_c[i][0] = x
+        points_c[i][1] = y
+        points_c[i][2] = depth_value
+
+    # assert len(points_c) == len(normalized_landmark_list)
+
+    # return np.array(points_c, dtype=np.float)
+    return points_c
 
 
 def get_camera_coord_landmarks(
@@ -44,48 +85,31 @@ def get_camera_coord_landmarks(
     Returns:
         The 3d points in camera coord in [x,y,z].
     """
-    points_c = []
-    for point in normalized_landmark_list:
-        # These points are outside of the depth images.
-        if point[0] < 0.0 or point[0] > 1.0 or point[1] < 0.0 or point[1] > 1.0:
-            points_c.append([point[0], point[1], None])
-            continue
+    with time_measure("GetCameraCoordinate"):
+        return get_camera_coord_landmarks_numba(
+            normalized_landmark_list, width, height, depth_image, intrinsic_matrix.ppx, intrinsic_matrix.ppy,
+            intrinsic_matrix.fx, intrinsic_matrix.fy)
 
-        x_pix = int(point[1] * height)
-        y_pix = int(point[0] * width)
-        depth_value = depth_image[x_pix, y_pix]
-
-        # This depth value is invalid.
-        if depth_value == 0:
-            points_c.append([point[0], point[1], None])
-            continue
-
-        # Get 3d coordinate from depth.
-        x = depth_value * (x_pix - intrinsic_matrix.ppx) / intrinsic_matrix.fx
-        y = depth_value * (y_pix - intrinsic_matrix.ppy) / intrinsic_matrix.fy
-        points_c.append([x, y, depth_value])
-
-    assert len(points_c) == len(normalized_landmark_list)
-
-    return np.array(points_c, dtype=np.float)
-
-
-def get_face_center_3d(
-        face_iris_landmark, left_mm, right_mm, width, height, intrinsic_matrix):
+# @jit(nopython=True)
+def get_center_3d_numba(face_iris_landmark, left_mm, right_mm, width, height, ppx, ppy, fx, fy):
     # import IPython; IPython.embed()
 
     center = np.mean(face_iris_landmark, axis=0)
     face_x_pix = center[0] * width
     face_y_pix = center[1] * height
     face_z = (left_mm + right_mm) / 2
-    face_x = face_z * (face_x_pix - intrinsic_matrix.ppx) / intrinsic_matrix.fx
-    face_y = face_z * (face_y_pix - intrinsic_matrix.ppy) / intrinsic_matrix.fy
+    face_x = face_z * (face_x_pix - ppx) / fx
+    face_y = face_z * (face_y_pix - ppy) / fy
 
     # Because y is up-axis in most cases.
     # face_y = -face_y
 
     return [face_x, face_y, face_z]
 
+def get_face_center_3d(
+        face_iris_landmark, left_mm, right_mm, width, height, intrinsic_matrix):
+    return get_center_3d_numba(face_iris_landmark, left_mm, right_mm, width, height, \
+        intrinsic_matrix.ppx, intrinsic_matrix.ppy, intrinsic_matrix.fx, intrinsic_matrix.fy)
 
 def project_point(point, width, height, intrinsic_matrix):
     return [

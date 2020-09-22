@@ -181,7 +181,7 @@ class HandGestureRecognizer():
         # Estimate hand landmarks and gesture text
             self.hand_recognizer.process_frame(rgb_image)
 
-        with time_measure("Run Hand Other"):
+        with time_measure("Run Hand Postprocess"):
             hand_landmarks = np.array(
                 self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks"))
             gesture_texts = self.hand_recognizer.get_string_array("gesture_texts")

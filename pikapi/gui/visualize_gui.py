@@ -51,5 +51,25 @@ class VisualizeGUI():
         else:
             _visualize_core(image, self.end_flag)
 
+    # def visualize_landmark(self, denormalized_landmark, with_index=True):
+    #     # self._task_queue.put(["visualize_landmark", denormalized_landmark])
+    #     for i, point in enumerate(denormalized_landmark):
+    #         draw_x = int((point[0] - min_x/width) * rate * width)
+    #         draw_y = int((point[1] - min_y/height) * rate * height)
+    #         cv2.circle(face_image, (draw_x, draw_y), 3,
+    #                 (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
+    #         cv2.putText(face_image, str(i), (draw_x, draw_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
+    #                     (255, 255, 255), 1, cv2.LINE_AA)
+
+
     def end_issued(self):
         return self.end_flag.value
+
+from multiprocessing.managers import BaseManager
+
+def create_visualize_gui_manager() -> BaseManager:
+    class MyManager(BaseManager): pass
+    MyManager.register('VisualizeGUI', VisualizeGUI)
+    manager = MyManager()
+    manager.start()
+    return manager

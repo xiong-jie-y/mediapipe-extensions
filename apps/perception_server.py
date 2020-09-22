@@ -3,7 +3,7 @@ and output data through ipc (currently zeromq) in the proto message format..
 """
 import ctypes
 import os
-from pikapi.gui.visualize_gui import VisualizeGUI
+from pikapi.gui.visualize_gui import VisualizeGUI, create_visualize_gui_manager
 from pikapi.logging import time_measure
 from threading import Thread
 import threading
@@ -41,7 +41,10 @@ from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
 @click.option('--use-realsense', is_flag=True)
 @click.option('--demo-mode', is_flag=True)
 @click.option('--gui-single-process', is_flag=True)
-def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode, gui_single_process):
+@click.option('--perception-single-process', is_flag=True)
+def cmd(
+    camera_id, run_name, relative_depth, use_realsense, 
+    demo_mode, gui_single_process, perception_single_process):
     intrinsic_matrix = get_intrinsic_matrix(camera_id)
 
     face_recognizer = FaceGeometryRecognizer(intrinsic_matrix)
@@ -78,7 +81,13 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode, gui_singl
     WIDTH = (640 * 2)
     HEIGHT = 360
 
-    visualizer = VisualizeGUI(width=WIDTH, height=HEIGHT, run_multiprocess=not gui_single_process)
+    # Should be created with manager when paralle.
+    manager = None
+    if gui_single_process:
+        visualizer = VisualizeGUI(width=WIDTH, height=HEIGHT, run_multiprocess=not gui_single_process)
+    else:
+        manager = create_visualize_gui_manager()
+        visualizer = manager.VisualizeGUI(width=WIDTH, height=HEIGHT)
 
     import pikapi.logging
     last_run = time.time()
@@ -89,94 +98,101 @@ def cmd(camera_id, run_name, relative_depth, use_realsense, demo_mode, gui_singl
     frame_times = []
     try:
         while(True):
-            last_run = time.time()
-            current_time = time.time()
-            frames = pipeline.wait_for_frames()
-            aligned_frames = align.process(frames)
-            color_frame = aligned_frames.get_color_frame()
-            depth_frame = aligned_frames.get_depth_frame()
-            if not depth_frame or not color_frame:
-                continue
+            with time_measure("Frame Fetch"):
+                last_run = time.time()
+                current_time = time.time()
+                frames = pipeline.wait_for_frames()
+                aligned_frames = align.process(frames)
+                color_frame = aligned_frames.get_color_frame()
+                depth_frame = aligned_frames.get_depth_frame()
+                if not depth_frame or not color_frame:
+                    continue
 
-            # import IPython; IPython.embed()
+                # import IPython; IPython.embed()
 
-            # Camera pose estimation.
-            acc = frames[2].as_motion_frame().get_motion_data()
-            gyro = frames[3].as_motion_frame().get_motion_data()
-            timestamp = frames[3].as_motion_frame().get_timestamp()
-            # rotation_estimator.process_gyro(
-            #     np.array([gyro.x, gyro.y, gyro.z]), timestamp)
-            # rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
-            # theta = rotation_estimator.get_theta()
-            acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
-            if len(acc_vectors) > 200:
-                acc_vectors.popleft()
-            acc = np.mean(acc_vectors, axis=0)
-            imu_info = IMUInfo(acc)
+            with time_measure("IMU Calculation"):
+                # Camera pose estimation.
+                acc = frames[2].as_motion_frame().get_motion_data()
+                gyro = frames[3].as_motion_frame().get_motion_data()
+                timestamp = frames[3].as_motion_frame().get_timestamp()
+                # rotation_estimator.process_gyro(
+                #     np.array([gyro.x, gyro.y, gyro.z]), timestamp)
+                # rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
+                # theta = rotation_estimator.get_theta()
+                acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
+                if len(acc_vectors) > 200:
+                    acc_vectors.popleft()
+                acc = np.mean(acc_vectors, axis=0)
+                imu_info = IMUInfo(acc)
 
-            # print(acc)
-            # print(np.array([acc.x, acc.y, acc.z]))
+                # print(acc)
+                # print(np.array([acc.x, acc.y, acc.z]))
 
-            # print(theta)
+                # print(theta)
 
-            frame = np.asanyarray(color_frame.get_data())
-            depth_image = np.asanyarray(depth_frame.get_data())
+            with time_measure("Frame Preparation"):
+                frame = np.asanyarray(color_frame.get_data())
+                depth_image = np.asanyarray(depth_frame.get_data())
 
-            # ret, frame = cap.read()
-            # if frame is None:
-            #     break
+                # ret, frame = cap.read()
+                # if frame is None:
+                #     break
 
-            # import IPython; IPython.embed()
-            # frame[depth_image > 2500] = 0
-            # frame[depth_image == 0] = 0
-            # depth_image[depth_image > 2500] = 0
-            # depth_image[depth_image == 0] = 0
+                # import IPython; IPython.embed()
+                # frame[depth_image > 2500] = 0
+                # frame[depth_image == 0] = 0
+                # depth_image[depth_image > 2500] = 0
+                # depth_image[depth_image == 0] = 0
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Prepare depth image for dispaly.
-            depth_image_cp = np.copy(depth_image)
-            depth_image_cp[depth_image_cp > 2500] = 0
-            depth_image_cp[depth_image_cp == 0] = 0
-            depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(
-                depth_image_cp, alpha=0.08), cv2.COLORMAP_JET)
-            # depth_colored = cv2.convertScaleAbs(depth_image, alpha=0.08)
+                # Prepare depth image for dispaly.
+                depth_image_cp = np.copy(depth_image)
+                depth_image_cp[depth_image_cp > 2500] = 0
+                depth_image_cp[depth_image_cp == 0] = 0
+                depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(
+                    depth_image_cp, alpha=0.08), cv2.COLORMAP_JET)
+                # depth_colored = cv2.convertScaleAbs(depth_image, alpha=0.08)
 
             if demo_mode:
                 target_image = depth_colored
             else:
                 target_image = frame
             
-            run_on_threads = False
-            if run_on_threads:
-                result = {}
-                face_th = threading.Thread(target=face_recognizer.get_state, \
-                        args=(gray, depth_image, target_image, imu_info), kwargs={"result": result})
-                face_th.start()
-                hand_th = threading.Thread(target=hand_gesture_recognizer.get_state, \
-                        args=(gray, depth_image, target_image), kwargs={"result": result})
-                hand_th.start()
-                body_th = threading.Thread(target=body_recognizer.get_state, \
-                        args=(gray, depth_image, target_image), kwargs={"result": result})
-                body_th.start()
+            with time_measure("Perception"):
+                if perception_single_process:
+                    run_on_threads = False
+                    if run_on_threads:
+                        result = {}
+                        face_th = threading.Thread(target=face_recognizer.get_state, \
+                                args=(gray, depth_image, target_image, imu_info), kwargs={"result": result})
+                        face_th.start()
+                        hand_th = threading.Thread(target=hand_gesture_recognizer.get_state, \
+                                args=(gray, depth_image, target_image), kwargs={"result": result})
+                        hand_th.start()
+                        body_th = threading.Thread(target=body_recognizer.get_state, \
+                                args=(gray, depth_image, target_image), kwargs={"result": result})
+                        body_th.start()
 
-                face_th.join()
-                hand_th.join()
-                body_th.join()
+                        face_th.join()
+                        hand_th.join()
+                        body_th.join()
 
-                face_state = result['face_state']
-                hand_states = result['hand_states']
-                body_state = result['body_state']
-            else:
-                face_state = face_recognizer.get_face_state(
-                    gray, depth_image, target_image, imu_info)
+                        face_state = result['face_state']
+                        hand_states = result['hand_states']
+                        body_state = result['body_state']
+                    else:
+                        face_state = face_recognizer.get_face_state(
+                            gray, depth_image, target_image, imu_info)
 
-                hand_states = \
-                    hand_gesture_recognizer.get_hand_states(
-                        gray, depth_image, target_image)
-                body_state = \
-                    body_recognizer.get_body_state(gray, depth_image, target_image)
-                # print(pose_landmark_list)
+                        hand_states = \
+                            hand_gesture_recognizer.get_hand_states(
+                                gray, depth_image, target_image)
+                        body_state = \
+                            body_recognizer.get_body_state(gray, depth_image, target_image)
+                        # print(pose_landmark_list)
+                else:
+                    pass
 
             interval = time.time() - last_run
             estimated_fps = 1.0 / interval

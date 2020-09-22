@@ -85,10 +85,10 @@ class BodyGeometryRecognizer():
         width = rgb_image.shape[1]
         height = rgb_image.shape[0]
 
-        with time_measure("Process Body Graph"):
+        with time_measure("Run Body Graph"):
             self.pose_recognizer.process_frame(rgb_image)
 
-        with time_measure("Process Body Others"):
+        with time_measure("Run Body Postprocess"):
             pose_landmark_list = np.array(
                 self.pose_recognizer.get_normalized_landmark_list("pose_landmarks"))
 
@@ -124,5 +124,6 @@ class BodyGeometryRecognizer():
             return ps.Body(
                 bones=bones
             )
+
     def get_state(self, *args, result={}):
         result['body_state'] = self.get_body_state(*args)

@@ -1,3 +1,4 @@
+from pikapi.gui.visualize_gui import VisualizeGUI
 from pikapi.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
@@ -26,7 +27,7 @@ from pikapi.core.camera import IMUInfo
 
 NOSE_INDEX = 4
 
-
+# @jit(nopython=True)
 def calculate_pose(denormalized_landmark: np.ndarray):
     """Calculate pose information in some forms."""
     # Calculate two of the head axis.
@@ -208,10 +209,10 @@ class FaceGeometryRecognizer:
         width = rgb_image.shape[1]
         height = rgb_image.shape[0]
 
-        with time_measure("Process Face Graph"):
+        with time_measure("Run Face Graph"):
             self.runner.process_frame(rgb_image)
 
-        with time_measure("Process Face Others"):
+        with time_measure("Run Face Postprocess"):
             multi_face_landmarks = [self.runner.get_normalized_landmark_list(
                 "face_landmarks_with_iris")]
 
@@ -277,8 +278,9 @@ class FaceGeometryRecognizer:
                         cv2.putText(face_image, str(i), (draw_x, draw_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
                                     (255, 255, 255), 1, cv2.LINE_AA)
 
-                    direction = self._get_face_direction(
-                        face_landmark, width, height, visualize_image, face_image)
+                    with time_measure("Calc Face Direction"):
+                        direction = self._get_face_direction(
+                            face_landmark, width, height, visualize_image, face_image)
                     # direction = self._adjust_by_imu(
                     #     np.array([direction]), imu_info)[0]
                     center_to_nose_direction = ps.Vector(
