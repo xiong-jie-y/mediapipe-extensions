@@ -136,6 +136,8 @@ class HandGestureRecognizer(PerformanceMeasurable):
     def _get_fingers(self, landmark_list, width, height) -> List[ps.Finger]:
         denormalized_landmark_list = get_denormalized_landmark_list(
             landmark_list, width, height)
+        
+        # Python version.
         palm_rotation = get_palm_angle(denormalized_landmark_list)
 
         direction_normalized_landmark_list = None
@@ -151,14 +153,33 @@ class HandGestureRecognizer(PerformanceMeasurable):
         for finger_name in FINGER_IDS.keys():
             rotations = get_relative_angles_from_xy_plain(direction_normalized_landmark_list[FINGER_IDS[finger_name]])
             finger_states.append(
-                ps.Finger(finger_name=finger_name, rotations=[
-                    self._proto_quaternion_from_rotation(
-                        Rotation.from_rotvec(realsense_vec_to_unity_char_vec(axis) * theta)) for axis, theta in rotations
-                ], rotation_angles=[
+                ps.Finger(finger_name=finger_name, 
+                # rotations=[
+                #     self._proto_quaternion_from_rotation(
+                #         Rotation.from_rotvec(realsense_vec_to_unity_char_vec(axis) * theta)) for axis, theta in rotations
+                # ], 
+                rotation_angles=[
                     theta for axis, theta in rotations
-                ]
+            ]
                 )
             )
+
+        # C++ version.
+        # finger_name_to_rotations = pikapi.landmark_utils.get_fingers(denormalized_landmark_list, FINGER_IDS)
+
+        # finger_states = []
+        # for finger_name, rotations in finger_name_to_rotations.items():
+        #     finger_states.append(
+        #         ps.Finger(finger_name=finger_name, 
+        #         # rotations=[
+        #         #     self._proto_quaternion_from_rotation(
+        #         #         Rotation.from_rotvec(realsense_vec_to_unity_char_vec(axis) * theta)) for axis, theta in rotations
+        #         # ], 
+        #         rotation_angles=[
+        #             theta for axis, theta in rotations
+        #         ]
+        #         )
+        #     )
 
         return finger_states
 
@@ -189,7 +210,7 @@ class HandGestureRecognizer(PerformanceMeasurable):
         # Estimate hand landmarks and gesture text
             self.hand_recognizer.process_frame(rgb_image)
 
-        with self.time_measure("Run Hand Postprocess"):
+        with self.time_measure("Get Hand Landmark Result"):
             hand_landmarks = np.array(
                 self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks"))
             gesture_texts = self.hand_recognizer.get_string_array("gesture_texts")
@@ -209,6 +230,7 @@ class HandGestureRecognizer(PerformanceMeasurable):
                 multi_handedness_parsed.append(a)
                 # import IPython; IPython.embed()
 
+        with self.time_measure("Run Hand Postprocess"):
             hand_states = []
             # assert len(hand_landmarks) == len(gesture_texts)
             acchimuitehoi_gesture_name = None
@@ -254,17 +276,19 @@ class HandGestureRecognizer(PerformanceMeasurable):
                 cv2.putText(visualize_image, handedness.classification[0].label, (min_x, min_y + 100), cv2.FONT_HERSHEY_PLAIN, 1.0,
                             (0, 0, 0), 2, cv2.LINE_AA)
 
-                effective_gesture_texts.append(self._get_achimuitehoi_gesture(
-                    hand_landmark_list, width, height, visualize_image, min_x, min_y + 50))
-                self._accumulate_trajectory(
-                    hand_landmark_list, width, height, visualize_image)
+                with self.time_measure("Recognize Acchimuitehoi Gesture"):
+                    effective_gesture_texts.append(self._get_achimuitehoi_gesture(
+                        hand_landmark_list, width, height, visualize_image, min_x, min_y + 50))
+                with self.time_measure("Calc finger rotations"):
+                    fingers = self._get_fingers(
+                            hand_landmark_list, width, height)
+                # self._accumulate_trajectory(
+                #     hand_landmark_list, width, height, visualize_image)
 
                 hand_states.append(ps.Hand(
                     gesture_names=effective_gesture_texts,
                     hand_exist_side=handedness.classification[0].label,
-                    fingers=self._get_fingers(
-                        hand_landmark_list, width, height)
-                ))
+                    fingers=fingers))
 
         # print(hand_states)
         return hand_states
@@ -272,7 +296,7 @@ class HandGestureRecognizer(PerformanceMeasurable):
         result['hand_states'] = self.get_hand_states(*args)
 
 class HandRecognizerProcess(Process):
-    def __init__(self, rgb_image, depth_image, visualize_image, intrinsic_matrix):
+    def __init__(self, rgb_image, depth_image, visualize_image, intrinsic_matrix, new_image_ready_event):
         super(HandRecognizerProcess, self).__init__()
         self.intrinsic_matrix = intrinsic_matrix
         self.queue = Queue()
@@ -284,6 +308,7 @@ class HandRecognizerProcess(Process):
         self.rgb_image = rgb_image
         self.depth_image=  depth_image
         self.visualize_image = visualize_image
+        self.new_image_ready_event = new_image_ready_event
         # self.md = md
         # self.manager = manager
         # self.dict = {}
@@ -296,8 +321,8 @@ class HandRecognizerProcess(Process):
         imu_info = None
         last_processed = time.time()
         while not self.finish_flag.value:
-            if (time.time() - last_processed) < 0.040:
-                continue
+            # if (time.time() - last_processed) < 0.020:
+            #     continue
     
             # print("ahoooo")
             if not self.queue.empty():
@@ -312,11 +337,13 @@ class HandRecognizerProcess(Process):
 
             if imu_info is not None:
                 last_processed = time.time()
+                self.new_image_ready_event.wait()
                 ss = hand_gesture_recognizer.get_hand_states(
                     np.frombuffer(memoryview(self.rgb_image), dtype=np.uint8).reshape((360, 640, 3)),
                     np.frombuffer(memoryview(self.depth_image), dtype=np.uint16).reshape((360, 640)),
                     np.frombuffer(memoryview(self.visualize_image), dtype=np.uint8).reshape((360, 640, 3)),
                     )
+                self.new_image_ready_event.clear()
                 # self.result_queue.put(100)
                 self.result_queue.put([s.SerializeToString() for s in ss])
                 # self.perf_queue.put(1000)

@@ -138,7 +138,6 @@ FINGER_IDS = dict(
     ]
 )
 
-
 def get_shortest_rotvec_between_two_vector(a, b):
     """Get shortest rotation between two vectors.
 
@@ -166,6 +165,7 @@ def get_shortest_rotvec_between_two_vector(a, b):
 
     return rotation_axis, theta
 
+import pikapi.landmark_utils
 
 def get_relative_angles_from_xy_plain(position_array):
     """Get relative angles from xy plain.
@@ -185,7 +185,7 @@ def get_relative_angles_from_xy_plain(position_array):
 
     # st.write(finger_diff)
     return [
-        get_shortest_rotvec_between_two_vector(a, b)
+        pikapi.landmark_utils.get_shortest_rotvec_between_two_vector(a, b)
         for a, b in zip(finger_diff[1:], finger_diff[:-1])
     ]
 
@@ -220,15 +220,15 @@ def get_relative_angles_to_match_to_followee(landmark, finger_ids):
         for a, b in zip(finger_diff[:-1], finger_diff[1:])
     ]
 
-
+import pikapi.landmark_utils
 def get_palm_angle(hand_landmark):
     rotvecs = []
-    base = np.array([0, 0, 1])
+    base = np.array([0, 0, 1.0])
     HAND_PLAIN_INDICES = [5, 9, 13, 17]
     for hand1, hand2 in zip(HAND_PLAIN_INDICES[:-1], HAND_PLAIN_INDICES[1:]):
         a = hand_landmark[hand1] - hand_landmark[0]
         b = hand_landmark[hand2] - hand_landmark[0]
-        # rot_axis, angle = get_shortest_rotvec_between_two_vector2(a, b)
+        # rot_axis, angle = get_shortest_rotvec_between_two_vecotr2(a, b)
         rot_axis, _ = get_shortest_rotvec_between_two_vector(a, b)
         rotvecs.append(rot_axis)
 
@@ -261,7 +261,7 @@ def visualize_landmark_list(landmark_list, width, height, image):
             point[1] * height)), cv2.FONT_HERSHEY_PLAIN, 1.0,
             (255, 255, 255), 1, cv2.LINE_AA)
 
-
+@jit(nopython=True)
 def get_denormalized_landmark_list(landmark_list, width, height):
     denormalized_landmark = np.copy(landmark_list)
     denormalized_landmark[:, 0] *= width

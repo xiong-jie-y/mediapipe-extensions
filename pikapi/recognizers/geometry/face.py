@@ -318,7 +318,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
 
 
 class FaceRecognizerProcess(Process):
-    def __init__(self, rgb_image, depth_image, visualize_image, intrinsic_matrix):
+    def __init__(self, rgb_image, depth_image, visualize_image, intrinsic_matrix, new_image_ready_event):
         super(FaceRecognizerProcess, self).__init__()
         self.intrinsic_matrix = intrinsic_matrix
         self.queue = Queue()
@@ -329,6 +329,7 @@ class FaceRecognizerProcess(Process):
         self.rgb_image = rgb_image
         self.depth_image=  depth_image
         self.visualize_image = visualize_image
+        self.new_image_ready_event = new_image_ready_event
 
     def run(self):
         # print("startfjkldjfdkjfdkfdjlkfdlsda")
@@ -341,8 +342,8 @@ class FaceRecognizerProcess(Process):
         latest_imu_info = None
         last_process = time.time()
         while not self.finish_flag.value:
-            if (time.time() - last_process) < 0.040:
-                continue
+            # if (time.time() - last_process) < 0.040:
+            #     continue
 
             if not self.queue.empty():
                 task = self.queue.get()
@@ -352,12 +353,14 @@ class FaceRecognizerProcess(Process):
 
             if latest_imu_info is not None:
                 last_process = time.time()
+                self.new_image_ready_event.wait()
                 face_state = recognizer.get_face_state(
                     np.frombuffer(memoryview(self.rgb_image), dtype=np.uint8).reshape((360, 640, 3)),
                     np.frombuffer(memoryview(self.depth_image), dtype=np.uint16).reshape((360, 640)),
                     np.frombuffer(memoryview(self.visualize_image), dtype=np.uint8).reshape((360, 640, 3)),
                     latest_imu_info
                     )
+                self.new_image_ready_event.clear()
                 self.result_queue.put(face_state.SerializeToString())
                 
 

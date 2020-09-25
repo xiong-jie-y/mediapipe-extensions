@@ -51,7 +51,7 @@ def cmd(
     intrinsic_matrix = get_intrinsic_matrix(camera_id)
     # Reason is unknown, but waiting at some point is necessary.
     # less than 0.1 was not enough from experiment.
-    time.sleep(0.1)
+    time.sleep(0.7)
 
     multiprocessing.set_start_method('spawn')
 
@@ -134,11 +134,15 @@ def cmd(
     #                                              target_image_buf, IntrinsicMatrix(intrinsic_matrix)
     #                                              ))
     face_processor = FaceRecognizerProcess(shared_gray, depth_image_shared,
-                                           target_image_buf, IntrinsicMatrix(intrinsic_matrix))
+                                           target_image_buf, IntrinsicMatrix(intrinsic_matrix),
+                                           visualizer.new_image_ready_event
+                                           )
     face_processor.start()
 
     hand_processor = HandRecognizerProcess(shared_gray, depth_image_shared,
-                                           target_image_buf, IntrinsicMatrix(intrinsic_matrix))
+                                           target_image_buf, IntrinsicMatrix(intrinsic_matrix),
+                                           visualizer.new_image_ready_event
+                                           )
     hand_processor.start()
 
     import pikapi.logging
@@ -153,8 +157,8 @@ def cmd(
     try:
         while(True):
             # print( (time.time() - last_run))
-            # if (time.time() - last_run) < 0.100:
-            #     continue
+            if (time.time() - last_run) < 0.013:
+                continue
 
             with time_measure("Frame Fetch"):
                 last_run = time.time()
@@ -189,8 +193,14 @@ def cmd(
                 # print(theta)
 
             with time_measure("Frame Preparation"):
-                frame = np.asanyarray(color_frame.get_data())
-                depth_image = np.asanyarray(depth_frame.get_data())
+                # frame = np.asanyarray(color_frame.get_data())
+                # depth_image = np.asanyarray(depth_frame.get_data())
+
+                frame = np.frombuffer(color_frame.get_data(), dtype=np.uint8).reshape(360, 640, 3)
+                depth_image = np.frombuffer(depth_frame.get_data(), dtype=np.uint16).reshape(360, 640)
+
+                # import IPython; IPython.embed()
+                
 
                 # depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(
                 #     depth_image, alpha=0.08), cv2.COLORMAP_JET)
@@ -198,9 +208,10 @@ def cmd(
                 # cv2.imshow("orig", frame)
                 # cv2.waitKey(2)
 
-                # gray = np.frombuffer(memoryview(shared_gray), dtype=np.uint8).reshape((360, 640, 3))
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                memoryview(shared_gray).cast('B')[:] = memoryview(gray).cast('B')[:]
+                gray = np.frombuffer(memoryview(shared_gray), dtype=np.uint8).reshape((360, 640, 3))
+                # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                cv2.cvtColor(frame, cv2.COLOR_BGR2RGB, gray)
+                # memoryview(shared_gray).cast('B')[:] = memoryview(gray).cast('B')[:]
                 # gray_shared = np.frombuffer(memoryview(shared_gray), dtype=np.uint8).reshape((360, 640, 3))
 
             with time_measure("Pass Image"):
@@ -308,19 +319,37 @@ def cmd(
 
             # Wait both result. Just want to run paralle.
             # if not face_processor.result_queue.empty():
+            # time.sleep(0.001)
+            # result = None
+            # while not face_processor.result_queue.empty():
+            #     # result = face_processor.result_queue.get(timeout=0.001)
+            #     result = face_processor.result_queue.get(False)
+            # if result is not None:
+            #     latest_face_state = ps.Face()
+            #     latest_face_state.ParseFromString(result)
+            # got_new_result = True
             result = face_processor.result_queue.get()
             latest_face_state = ps.Face()
             latest_face_state.ParseFromString(result)
-            # got_new_result = True
 
             # if not hand_processor.result_queue.empty():
+            # result = None
+            # while not hand_processor.result_queue.empty():
+            #     # result = hand_processor.result_queue.get(timeout=0.001)
+            #     result = hand_processor.result_queue.get(False)
+            # if result is not None:
+            #     latest_hand_states = []
+            #     for r in result:
+            #         hand = ps.Hand()
+            #         hand.ParseFromString(r)
+            #         latest_hand_states.append(hand)
+            # got_new_result = True
             result = hand_processor.result_queue.get()
             latest_hand_states = []
             for r in result:
                 hand = ps.Hand()
                 hand.ParseFromString(r)
                 latest_hand_states.append(hand)
-            # got_new_result = True
 
             # if got_new_result:
             visualizer.draw()

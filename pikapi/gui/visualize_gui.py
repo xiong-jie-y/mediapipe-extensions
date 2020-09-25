@@ -60,6 +60,8 @@ class VisualizeGUI():
             self.depth_image = multiprocessing.sharedctypes.RawArray(ctypes.c_uint16, height * width)
             self.buf_ready = multiprocessing.Event()
             self.buf_ready.clear()
+            self.new_image_ready_event = multiprocessing.Event()
+            self.new_image_ready_event.clear()
             self.p1 = multiprocessing.Process(
                 target=_visualize_image,
                 args=(
@@ -73,8 +75,10 @@ class VisualizeGUI():
     def pass_image(self, image, depth_image):
         if self.run_multiprocess:
             self.buf_ready.clear()
+            self.new_image_ready_event.clear()
             memoryview(self.buf1).cast('B')[:] = memoryview(image).cast('B')[:]
             memoryview(self.depth_image).cast('B')[:] = memoryview(depth_image).cast('B')[:]
+            self.new_image_ready_event.set()
             # buf_dict["buf"] = target_image
             # memoryview(buf1).cast('B')[:] = target_image
 

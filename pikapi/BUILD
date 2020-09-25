@@ -28,6 +28,16 @@ pybind_extension(
     ],
 )
 
+pybind_extension(
+    name = "landmark_utils",
+    srcs = [
+        "landmark_utils.cc",
+    ],
+    deps = [
+        "@eigen_archive//:eigen",
+    ]
+)
+
 
 pybind_extension(
     name = "_framework_bindings",
