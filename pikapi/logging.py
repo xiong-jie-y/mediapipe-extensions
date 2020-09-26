@@ -6,6 +6,7 @@ from multiprocessing import Manager
 from multiprocessing.managers import BaseManager
 import pickle
 import os
+from pikapi.core.camera import IntrinsicMatrix
 import time
 from typing import Any, Dict, List, NamedTuple
 import cv2
@@ -49,6 +50,48 @@ def create_mp_logger():
     manager = Manager()
     manager_dict = manager.dict()
     return manager, manager_dict
+
+class MyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, IntrinsicMatrix):
+            return dict(
+                ppx=obj.ppx,
+                ppy=obj.ppy, 
+                fx = obj.fx,
+                fy = obj.fy,
+            )
+        else:
+            return super(MyEncoder, self).default(obj)
+
+def save_argument(func):
+    def wrapper_save(*args, **kwargs):
+        # json.dump(args, open(f"{prefix}_{func.__name__}_args.json", 'w'), cls=MyEncoder)
+        # json.dump(kwargs, open(f"{prefix}_{func.__name__}_kwargs.json", 'w'), cls=MyEncoder)
+        if 'pikapi_save' in kwargs:
+            if kwargs['pikapi_save']:
+                pickle.dump(args, open(f"{func.__name__}_args.pkl", 'wb'))
+                pickle.dump(kwargs, open(f"{func.__name__}_kwargs.pkl", 'wb'))
+                print("Saved")
+            del kwargs['pikapi_save']
+
+        return func(*args, **kwargs)
+
+    return wrapper_save
+
+def save_class_argument(method):
+    def wrapper_save(*args, **kwargs):
+        json.dump(args[1:], open(f"{method.__name__}_args.json", 'w'), cls=MyEncoder)
+        json.dump(kwargs, open(f"{method.__name__}_kwargs.json", 'w'), cls=MyEncoder)
+        print("Saved")
+        return method(*args, **kwargs)
+
+    return wrapper_save
 
 @contextlib.contextmanager
 def time_measure(log_name):

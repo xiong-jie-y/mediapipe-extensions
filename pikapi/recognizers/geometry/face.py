@@ -52,13 +52,6 @@ def calculate_pose(denormalized_landmark: np.ndarray):
     rot = Rotation.align_vectors([right, up, front], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     return rot, center_to_nose_direction, up_direction
 
-class IntrinsicMatrix():
-    def __init__(self, intrinsic_matrix):
-        self.fx = intrinsic_matrix.fx
-        self.fy = intrinsic_matrix.fy
-        self.ppx = intrinsic_matrix.ppx
-        self.ppy = intrinsic_matrix.ppy
-
 class FaceGeometryRecognizer(PerformanceMeasurable):
     """Calculate geometrical properties of face.
     """
@@ -214,6 +207,103 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         )
         return relation_to_monitor, center_in_unity_pb, vec
 
+    def _get_face(self, face_landmark, width, height, rgb_image, depth_image, visualize_image):
+        center = None
+        hand_center = None
+        center_to_nose_direction = None
+        if len(face_landmark) != 0:
+            min_x = int(min(face_landmark[:, 0]) * width)
+            min_y = int(min(face_landmark[:, 1]) * height)
+            max_x = int(max(face_landmark[:, 0]) * width)
+            max_y = int(max(face_landmark[:, 1]) * height)
+
+            # print(face_mesh_to_camera_coordinate(face_landmark, left_mm, right_mm))
+            # a = len(hand_landmark_points)
+            # mean_depth = depth_from_maybe_points_3d(hand_landmark_points)
+            # # if mean_depth is None:
+            # assert a == len(hand_landmark_points)
+
+            hand_center = pikapi.utils.landmark.get_3d_center(
+                face_landmark, width, height, depth_image, self.intrinsic_matrix)
+            mean_depth = hand_center[2]
+
+            # print(hand_landmark_points)
+
+            # print(depth_filter)
+            # print(mean_depth)
+            # import IPython; IPython.embed()
+            # center = get_face_center_3d(
+            #     face_landmark, left_mm, right_mm, width, height, self.intrinsic_matrix)
+            if mean_depth is None:
+                center = np.array([width, height, np.nan])
+            else:
+                center = get_face_center_3d(
+                    face_landmark, mean_depth, mean_depth, width, height, self.intrinsic_matrix)
+            # This center will have a y-axis down side.
+            # if center[2]:
+            # import IPython; IPython.embed()
+
+                x, y = project_point(
+                    center, width, height, self.intrinsic_matrix)
+                cv2.circle(visualize_image, (x, y), 3, (0, 0, 255),
+                        thickness=-1, lineType=cv2.LINE_AA)
+
+            # print(center)
+            # print(x,y)
+
+            # print(np.mean(face_landmark, axis=0))
+
+            # if mean_depth < 100:
+            #    import IPython; IPython.embed()
+
+            # mean depth
+            for i, point in enumerate(face_landmark):
+                cv2.circle(visualize_image, (int(point[0] * rgb_image.shape[1]), int(
+                    point[1] * rgb_image.shape[0])), 3, (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
+
+            rate = 8
+            face_width = max_x - min_x
+            face_height = max_y - min_y
+            face_image = np.zeros((face_height * rate, face_width * rate))
+            for i, point in enumerate(face_landmark):
+                draw_x = int((point[0] - min_x/width) * rate * width)
+                draw_y = int((point[1] - min_y/height) * rate * height)
+                cv2.circle(face_image, (draw_x, draw_y), 3,
+                        (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
+                cv2.putText(face_image, str(i), (draw_x, draw_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
+                            (255, 255, 255), 1, cv2.LINE_AA)
+
+            with self.time_measure("Calc Face Direction"):
+                direction = self._get_face_direction(
+                    face_landmark, width, height, visualize_image, face_image)
+            # direction = self._adjust_by_imu(
+            #     np.array([direction]), imu_info)[0]
+            center_to_nose_direction = ps.Vector(
+                x=direction[0], y=direction[1], z=direction[2])
+
+            self.last_face_image = face_image
+            # cv2.imshow("Face Image", face_image)
+
+            # print(np.mean([point[2] for point in face_landmark]))
+
+        # relation_to_monitor, center_in_unity, vec = self._get_face_display_relation(center, imu_info)
+        relation_to_monitor = None
+        center_in_unity = None
+
+        if hand_center is None:
+            vec = self.previous
+        else:
+            vec = ps.Vector(x=hand_center[0], y=hand_center[1], z=hand_center[2])
+            self.previous = vec
+        # print("Face Direction")
+        # print(center_to_nose_direction)
+        return ps.Face(
+            center=vec,
+            center_in_unity=center_in_unity,
+            pose=ps.FacePose(rotation_vector=center_to_nose_direction),
+            relation_to_monitor=relation_to_monitor
+        )
+
     def get_face_state(self,
                        rgb_image: np.ndarray, depth_image: np.ndarray,
                        visualize_image: np.ndarray, imu_info: IMUInfo) -> ps.Face:
@@ -225,96 +315,24 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
             self.runner.process_frame(rgb_image)
 
         with self.time_measure("Run Face Postprocess"):
-            multi_face_landmarks = [self.runner.get_normalized_landmark_list(
-                "face_landmarks_with_iris")]
+            multi_face_landmarks = [self.runner.get_normalized_landmark_list("face_landmarks_with_iris")]
 
-            center = None
-            center_to_nose_direction = None
+            # from pikapi.logging import TimestampedData
+            # state = self.yes_or_no_estimator.get_state(
+            #     TimestampedData(current_time, multi_face_landmarks))
+            # if state == 1:
+            #     state = "Yes"
+            # elif state == -1:
+            #     state = "No"
+            # else:
+            #     state = "No Gesture"
+
+            # cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
+            #             (255, 255, 255), 1, cv2.LINE_AA)
+
             if len(multi_face_landmarks) != 0:
                 face_landmark = np.array(multi_face_landmarks[0])
-                from pikapi.logging import TimestampedData
-                if len(face_landmark) != 0:
-                    min_x = int(min(face_landmark[:, 0]) * width)
-                    min_y = int(min(face_landmark[:, 1]) * height)
-                    max_x = int(max(face_landmark[:, 0]) * width)
-                    max_y = int(max(face_landmark[:, 1]) * height)
-                    state = self.yes_or_no_estimator.get_state(
-                        TimestampedData(current_time, multi_face_landmarks))
-                    if state == 1:
-                        state = "Yes"
-                    elif state == -1:
-                        state = "No"
-                    else:
-                        state = "No Gesture"
-
-                    cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
-                                (255, 255, 255), 1, cv2.LINE_AA)
-
-                    # print(face_mesh_to_camera_coordinate(face_landmark, left_mm, right_mm))
-                    mean_depth = depth_from_maybe_points_3d(
-                        get_camera_coord_landmarks(face_landmark, width, height, depth_image, self.intrinsic_matrix))
-                    # if mean_depth is None:
-
-                    # import IPython; IPython.embed()
-                    # center = get_face_center_3d(
-                    #     face_landmark, left_mm, right_mm, width, height, self.intrinsic_matrix)
-                    center = get_face_center_3d(
-                        face_landmark, mean_depth, mean_depth, width, height, self.intrinsic_matrix)
-                    # This center will have a y-axis down side.
-                    # if center[2]:
-                    # import IPython; IPython.embed()
-
-                    x, y = project_point(
-                        center, width, height, self.intrinsic_matrix)
-
-                    # print(center)
-                    # print(x,y)
-
-                    # if mean_depth < 100:
-                    #    import IPython; IPython.embed()
-
-                    # mean depth
-                    for i, point in enumerate(face_landmark):
-                        cv2.circle(visualize_image, (int(point[0] * rgb_image.shape[1]), int(
-                            point[1] * rgb_image.shape[0])), 3, (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
-
-                    rate = 8
-                    face_width = max_x - min_x
-                    face_height = max_y - min_y
-                    face_image = np.zeros((face_height * rate, face_width * rate))
-                    for i, point in enumerate(face_landmark):
-                        draw_x = int((point[0] - min_x/width) * rate * width)
-                        draw_y = int((point[1] - min_y/height) * rate * height)
-                        cv2.circle(face_image, (draw_x, draw_y), 3,
-                                (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
-                        cv2.putText(face_image, str(i), (draw_x, draw_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
-                                    (255, 255, 255), 1, cv2.LINE_AA)
-
-                    with self.time_measure("Calc Face Direction"):
-                        direction = self._get_face_direction(
-                            face_landmark, width, height, visualize_image, face_image)
-                    # direction = self._adjust_by_imu(
-                    #     np.array([direction]), imu_info)[0]
-                    center_to_nose_direction = ps.Vector(
-                        x=direction[0], y=direction[1], z=direction[2])
-
-                    self.last_face_image = face_image
-                    # cv2.imshow("Face Image", face_image)
-
-                    cv2.circle(visualize_image, (x, y), 3, (0, 0, 255),
-                            thickness=-1, lineType=cv2.LINE_AA)
-                    # print(np.mean([point[2] for point in face_landmark]))
-
-            relation_to_monitor, center_in_unity, vec = self._get_face_display_relation(center, imu_info)
-
-            # print("Face Direction")
-            # print(center_to_nose_direction)
-            return ps.Face(
-                center=vec,
-                center_in_unity=center_in_unity,
-                pose=ps.FacePose(rotation_vector=center_to_nose_direction),
-                relation_to_monitor=relation_to_monitor
-            )
+                return self._get_face(face_landmark, width, height, rgb_image, depth_image, visualize_image)
 
 
 class FaceRecognizerProcess(Process):

@@ -133,12 +133,9 @@ class HandGestureRecognizer(PerformanceMeasurable):
         quat = rotation.as_quat()
         return ps.Quaternion(x=quat[0], y=quat[1], z=quat[2], w=quat[3])
 
-    def _get_fingers(self, landmark_list, width, height) -> List[ps.Finger]:
-        denormalized_landmark_list = get_denormalized_landmark_list(
-            landmark_list, width, height)
-        
+    def _get_fingers(self, denormalized_landmark_list, palm_rotation) -> List[ps.Finger]:        
         # Python version.
-        palm_rotation = get_palm_angle(denormalized_landmark_list)
+        # palm_rotation = get_palm_angle(denormalized_landmark_list)
 
         direction_normalized_landmark_list = None
         # It is already normalized, when None.
@@ -238,16 +235,22 @@ class HandGestureRecognizer(PerformanceMeasurable):
                 effective_gesture_texts = []
                 hand_landmark_points = get_camera_coord_landmarks(
                     hand_landmark_list, width, height, depth_image, self.intrinsic_matrix)
-
                 # Filter conversing person's hand.
                 zs = hand_landmark_points[:, 2]
-                zs = zs[zs != None]
+
+                nan_filter = ~np.isnan(zs)
+                zs = zs[nan_filter]
+                inlier_filter = (zs < np.percentile(zs, 90)) & (zs > np.percentile(zs, 10))
+                zs = zs[inlier_filter]
+
                 if len(zs) == 0:
                     for i, point in enumerate(hand_landmark_list):
                         cv2.circle(visualize_image, (int(point[0] * width), int(
                             point[1] * height)), 3, (0, 0, 255), thickness=-1, lineType=cv2.LINE_AA)
                     continue
                 mean_depth = np.mean(zs)
+                hand_center_xy = np.mean(hand_landmark_points[nan_filter][inlier_filter][:, [0, 1]], axis=0)
+                hand_center = np.concatenate((hand_center_xy, [mean_depth]))
 
                 min_x = int(min(hand_landmark_list[:, 0]) * width)
                 min_y = int(min(hand_landmark_list[:, 1]) * height)
@@ -261,6 +264,17 @@ class HandGestureRecognizer(PerformanceMeasurable):
                     cv2.putText(visualize_image, str(mean_depth), (min_x, min_y + 50), cv2.FONT_HERSHEY_PLAIN, 1.0,
                             (0, 0, 0), 2, cv2.LINE_AA)
                     continue
+
+                # print(hand_landmark_points)
+
+                # print(np.mean(hand_landmark_list, axis=0))
+
+                # print(zs)
+                # print(f"hand", mean_depth)
+
+                # print(zs)
+                # print(mean_depth)
+                # print(hand_center)
                 # self.logger.info(f"In a range: {mean_depth}")
 
                 import pikapi.utils.opencv
@@ -280,13 +294,21 @@ class HandGestureRecognizer(PerformanceMeasurable):
                     effective_gesture_texts.append(self._get_achimuitehoi_gesture(
                         hand_landmark_list, width, height, visualize_image, min_x, min_y + 50))
                 with self.time_measure("Calc finger rotations"):
+                    denormalized_landmark_list = get_denormalized_landmark_list(
+                        hand_landmark_list, width, height)
+                    paxis, pangle = pikapi.landmark_utils.estimate_palm_rotation(denormalized_landmark_list)
+                    palm_rotation = Rotation.from_rotvec(paxis * pangle)
                     fingers = self._get_fingers(
-                            hand_landmark_list, width, height)
+                            denormalized_landmark_list, palm_rotation)
+                    palm_rotvec = paxis * pangle
                 # self._accumulate_trajectory(
                 #     hand_landmark_list, width, height, visualize_image)
 
+                # print(hand_center)
                 hand_states.append(ps.Hand(
                     gesture_names=effective_gesture_texts,
+                    center=ps.Vector(x=hand_center[0], y=hand_center[1], z=hand_center[2]),
+                    palm_rotation=ps.Vector(x=palm_rotvec[0], y=palm_rotvec[1],z= palm_rotvec[2]),
                     hand_exist_side=handedness.classification[0].label,
                     fingers=fingers))
 

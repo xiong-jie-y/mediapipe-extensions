@@ -37,7 +37,23 @@ import pyrealsense2 as rs
 #     landmark_list_copy[:, 1] *= height
 from numba import jit
 
-@jit(nopython=True)
+@pikapi.logging.save_argument
+def get_3d_center(face_landmark, width, height, depth_image, intrinsic_matrix):
+    hand_landmark_points = get_camera_coord_landmarks(face_landmark, width, height, depth_image, intrinsic_matrix)
+    zs = hand_landmark_points[:, 2]
+    nan_filter = ~np.isnan(zs)
+    zs = zs[nan_filter]
+    inlier_filter = (zs < np.percentile(zs, 90)) & (zs > np.percentile(zs, 10))
+    zs = zs[inlier_filter]
+
+    mean_depth = np.mean(zs)
+    hand_center_xy = np.mean(hand_landmark_points[nan_filter][inlier_filter][:, [0, 1]], axis=0)
+    hand_center = np.concatenate((hand_center_xy, [mean_depth]))
+
+    return hand_center
+
+# @jit(nopython=True)
+# @pikapi.logging.save_argument
 def get_camera_coord_landmarks_numba(
         normalized_landmark_list: np.ndarray, width: int, height: int,
         depth_image: np.ndarray, ppx, ppy, fx, fy):
@@ -52,9 +68,9 @@ def get_camera_coord_landmarks_numba(
             points_c[i][2] = np.nan
             continue
 
-        x_pix = int(point[1] * height)
-        y_pix = int(point[0] * width)
-        depth_value = depth_image[x_pix, y_pix]
+        x_pix = int(point[0] * width)
+        y_pix = int(point[1] * height)
+        depth_value = depth_image[y_pix, x_pix]
 
         # This depth value is invalid.
         if depth_value == 0:
@@ -63,6 +79,8 @@ def get_camera_coord_landmarks_numba(
             points_c[i][2] = np.nan
             continue
 
+        # print(x_pix, ppx)
+        # print(y_pix, ppy)
         # Get 3d coordinate from depth.
         x = depth_value * (x_pix - ppx) / fx
         y = depth_value * (y_pix - ppy) / fy
@@ -247,6 +265,7 @@ def get_palm_angle(hand_landmark):
 def depth_from_maybe_points_3d(hand_landmark_points):
     zs = hand_landmark_points[:, 2]
     zs = zs[~np.isnan(zs)]
+    zs = zs[(zs < np.percentile(zs, 90)) & (zs > np.percentile(zs, 10))]
     if len(zs) == 0:
         return None
 

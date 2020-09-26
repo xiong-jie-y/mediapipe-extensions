@@ -97,6 +97,16 @@ Eigen::AngleAxisd EstimatePalmAngleFromBase(const std::vector<Eigen::Vector3d>& 
     return std::move(rotation);
 }
 
+
+std::tuple<Eigen::Vector3d, double> EstimatePalmRotation(const std::vector<Eigen::Vector3d>& landmark_list) {
+    Eigen::Matrix3d baseMatrix;
+    baseMatrix << 1, 0, 0,
+                  0, 1, 0,
+                  0, 0, 1;
+    auto rotation = EstimatePalmAngleFromBase(landmark_list, baseMatrix);
+    return std::make_tuple(rotation.axis(), rotation.angle());
+}
+
 std::vector<std::tuple<Eigen::Vector3d, double>> GetRelativeAnglesFromXYPlane(
     const std::vector<Eigen::Vector3d>& landmarkList, const std::vector<int>& ids
 ) {
@@ -152,4 +162,5 @@ PYBIND11_MODULE(landmark_utils, m) {
     // m.def("get_shortest_rotvec_between_two_vector", &GetRotationVector);
     m.def("get_shortest_rotvec_between_two_vector", &GetRotationVector, py::return_value_policy::move);
     m.def("get_fingers", &GetFingers, py::return_value_policy::move);
+    m.def("estimate_palm_rotation", &EstimatePalmRotation, py::return_value_policy::move);
 }

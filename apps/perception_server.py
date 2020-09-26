@@ -31,8 +31,8 @@ import pikapi.mediapipe_util as pmu
 
 import pyrealsense2 as rs
 from pikapi.utils.realsense import *
-from pikapi.core.camera import IMUInfo
-from pikapi.recognizers.geometry.face import FaceGeometryRecognizer, FaceRecognizerProcess, IntrinsicMatrix
+from pikapi.core.camera import IMUInfo, IntrinsicMatrix
+from pikapi.recognizers.geometry.face import FaceGeometryRecognizer, FaceRecognizerProcess
 from pikapi.recognizers.geometry.hand import HandGestureRecognizer, HandRecognizerProcess
 from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
 
@@ -345,18 +345,20 @@ def cmd(
             #         latest_hand_states.append(hand)
             # got_new_result = True
             result = hand_processor.result_queue.get()
-            latest_hand_states = []
+            latest_hand_states_tmp = []
             for r in result:
                 hand = ps.Hand()
                 hand.ParseFromString(r)
-                latest_hand_states.append(hand)
+                latest_hand_states_tmp.append(hand)
+            if len(latest_hand_states_tmp) != 0:
+                latest_hand_states = latest_hand_states_tmp
 
             # if got_new_result:
             visualizer.draw()
 
             # if face_recognizer.last_face_image is not None:
             #     cv2.imshow("Face Image", face_recognizer.last_face_image)
-            last_run = time.time()
+            # last_run = time.time()
 
             # import IPython; IPython.embed()
 
