@@ -240,7 +240,13 @@ class HandGestureRecognizer(PerformanceMeasurable):
 
                 nan_filter = ~np.isnan(zs)
                 zs = zs[nan_filter]
-                inlier_filter = (zs < np.percentile(zs, 90)) & (zs > np.percentile(zs, 10))
+                if len(zs) == 0:
+                    for i, point in enumerate(hand_landmark_list):
+                        cv2.circle(visualize_image, (int(point[0] * width), int(
+                            point[1] * height)), 3, (0, 0, 255), thickness=-1, lineType=cv2.LINE_AA)
+                    continue
+                # inlier_filter = (zs < np.percentile(zs, 70)) & (zs > np.percentile(zs, 30))
+                inlier_filter = (zs < np.percentile(zs, 10))
                 zs = zs[inlier_filter]
 
                 if len(zs) == 0:
@@ -249,8 +255,11 @@ class HandGestureRecognizer(PerformanceMeasurable):
                             point[1] * height)), 3, (0, 0, 255), thickness=-1, lineType=cv2.LINE_AA)
                     continue
                 mean_depth = np.mean(zs)
-                hand_center_xy = np.mean(hand_landmark_points[nan_filter][inlier_filter][:, [0, 1]], axis=0)
-                hand_center = np.concatenate((hand_center_xy, [mean_depth]))
+                # hand_center_xy = np.mean(hand_landmark_points[nan_filter][inlier_filter][:, [0, 1]], axis=0)
+                # hand_center = np.concatenate((hand_center_xy, [mean_depth]))
+                
+                # Use wrist for more stability.
+                hand_center = np.concatenate((hand_landmark_points[0], [mean_depth]))
 
                 min_x = int(min(hand_landmark_list[:, 0]) * width)
                 min_y = int(min(hand_landmark_list[:, 1]) * height)
@@ -265,12 +274,15 @@ class HandGestureRecognizer(PerformanceMeasurable):
                             (0, 0, 0), 2, cv2.LINE_AA)
                     continue
 
+                # if mean_depth > 1000:
+                #     print(hand_landmark_points[:, 2])
+
                 # print(hand_landmark_points)
 
                 # print(np.mean(hand_landmark_list, axis=0))
 
                 # print(zs)
-                # print(f"hand", mean_depth)
+                print(f"hand", mean_depth)
 
                 # print(zs)
                 # print(mean_depth)
@@ -296,11 +308,12 @@ class HandGestureRecognizer(PerformanceMeasurable):
                 with self.time_measure("Calc finger rotations"):
                     denormalized_landmark_list = get_denormalized_landmark_list(
                         hand_landmark_list, width, height)
-                    paxis, pangle = pikapi.landmark_utils.estimate_palm_rotation(denormalized_landmark_list)
+                    paxis, pangle = pikapi.landmark_utils.estimate_palm_rotation(denormalized_landmark_list, handedness.classification[0].label)
                     palm_rotation = Rotation.from_rotvec(paxis * pangle)
                     fingers = self._get_fingers(
                             denormalized_landmark_list, palm_rotation)
                     palm_rotvec = paxis * pangle
+                    # print(paxis, pangle)
                 # self._accumulate_trajectory(
                 #     hand_landmark_list, width, height, visualize_image)
 

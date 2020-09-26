@@ -225,6 +225,9 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
 
             hand_center = pikapi.utils.landmark.get_3d_center(
                 face_landmark, width, height, depth_image, self.intrinsic_matrix)
+            if hand_center is None:
+                return
+    
             mean_depth = hand_center[2]
 
             # print(hand_landmark_points)

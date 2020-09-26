@@ -35,6 +35,7 @@ pybind_extension(
     ],
     deps = [
         "@eigen_archive//:eigen",
+        "@mediapipe//third_party:glog"
     ]
 )
 

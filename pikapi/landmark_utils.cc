@@ -6,6 +6,8 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include "glog/logging.h"
+
 namespace py = pybind11;
 
 std::tuple<Eigen::Vector3d, double> GetRotationVector(Eigen::Ref<Eigen::Vector3d> v1, Eigen::Ref<Eigen::Vector3d> v2) {
@@ -82,7 +84,7 @@ Eigen::AngleAxisd EstimatePalmAngleFromBase(const std::vector<Eigen::Vector3d>& 
     auto meanPalmVector = rotationVectorSum / (PALM_PLAIN_INDICES.size() - 1);
 
     // Calculate unit direction vectors perpendicular to palm vector.
-    Eigen::Vector3d fingerVector = (landmark_list[9] - landmark_list[0]) - (landmark_list[13] - landmark_list[0]);
+    Eigen::Vector3d fingerVector = ((landmark_list[9] - landmark_list[0]) + (landmark_list[13] - landmark_list[0]))/2.0;
     fingerVector /= fingerVector.norm();
     Eigen::Vector3d thumbVector = fingerVector.cross(meanPalmVector);
     thumbVector /= thumbVector.norm();
@@ -92,17 +94,30 @@ Eigen::AngleAxisd EstimatePalmAngleFromBase(const std::vector<Eigen::Vector3d>& 
     vectors.col(0) = thumbVector;
     vectors.col(1) = fingerVector;
     vectors.col(2) = meanPalmVector;
-    const auto& A = Find3DAffineTransform(vectors, base);
+
+    // std::cout << vectors << std::endl;
+    const auto& A = Find3DAffineTransform(base, vectors);
     auto rotation = Eigen::AngleAxisd(A.linear());
     return std::move(rotation);
 }
 
 
-std::tuple<Eigen::Vector3d, double> EstimatePalmRotation(const std::vector<Eigen::Vector3d>& landmark_list) {
+std::tuple<Eigen::Vector3d, double> EstimatePalmRotation(
+    const std::vector<Eigen::Vector3d>& landmark_list,
+    const std::string& direction) {
     Eigen::Matrix3d baseMatrix;
-    baseMatrix << 1, 0, 0,
-                  0, 1, 0,
-                  0, 0, 1;
+    // This base is 
+    // (1) Fingers ar pointing to camera.
+    // (2) 
+    if (direction == "Right") {
+        baseMatrix << 1, 0, 0,
+                    0, -1, 0,
+                    0, 0, -1;
+    } else if (direction == "Left") {
+        baseMatrix << 1, 0, 0,
+                    0, -1, 0,
+                    0, 0, 1;   
+    }        
     auto rotation = EstimatePalmAngleFromBase(landmark_list, baseMatrix);
     return std::make_tuple(rotation.axis(), rotation.angle());
 }

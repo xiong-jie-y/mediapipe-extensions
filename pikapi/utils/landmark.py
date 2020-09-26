@@ -43,8 +43,12 @@ def get_3d_center(face_landmark, width, height, depth_image, intrinsic_matrix):
     zs = hand_landmark_points[:, 2]
     nan_filter = ~np.isnan(zs)
     zs = zs[nan_filter]
+    if len(zs) == 0:
+        return None
     inlier_filter = (zs < np.percentile(zs, 90)) & (zs > np.percentile(zs, 10))
     zs = zs[inlier_filter]
+    if len(zs) == 0:
+        return None
 
     mean_depth = np.mean(zs)
     hand_center_xy = np.mean(hand_landmark_points[nan_filter][inlier_filter][:, [0, 1]], axis=0)
