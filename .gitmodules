@@ -1,0 +1,3 @@
+[submodule "openvino_open_model_zoo_toolkit"]
+	path = openvino_open_model_zoo_toolkit
+	url = git@github.com:yas-sim/openvino_open_model_zoo_toolkit.git

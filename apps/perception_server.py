@@ -6,7 +6,7 @@ import multiprocessing
 from multiprocessing import Queue
 import os
 from pikapi.gui.visualize_gui import VisualizeGUI, create_visualize_gui_manager
-from pikapi.logging import create_logger_manager, create_mp_logger, time_measure
+from pikapi.utils.logging import create_logger_manager, create_mp_logger, time_measure
 from threading import Thread
 import threading
 from numpy.core.fromnumeric import mean
@@ -36,7 +36,112 @@ from pikapi.recognizers.geometry.face import FaceGeometryRecognizer, FaceRecogni
 from pikapi.recognizers.geometry.hand import HandGestureRecognizer, HandRecognizerProcess
 from pikapi.recognizers.geometry.body import BodyGeometryRecognizer
 
+# class PublisherProcess(Process):
+#     def __init__(self):
+        
 
+# class CameraFetchProcess(Process):
+#     def __init__(self, 
+#     buffer_ready_event, image_ready_event, face_processor_queue, hand_processor_queue,
+#     target_image_buffer, 
+#     ):
+#         self.buffer_ready_event = buffer_ready_event
+#         self.image_ready_event = image_ready_event
+#         self.face_processor_queue = face_processor_queue
+#         self.hand_processor_queue = hand_processor_queue
+    
+#     def run(self):
+#         # Alignオブジェクト生成
+#         config = rs.config()
+#         #config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+#         #config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
+#         #
+#         config.enable_stream(rs.stream.color, 640, 360, rs.format.bgr8, 60)
+#         #
+#         config.enable_stream(rs.stream.depth, 640, 360, rs.format.z16, 60)
+#         config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 250)
+#         config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
+
+#         pipeline = rs.pipeline()
+#         profile = pipeline.start(config)
+#         align_to = rs.stream.color
+#         align = rs.align(align_to)
+#         while True:
+#             with time_measure("Frame Fetch"):
+#                 last_run = time.time()
+#                 current_time = time.time()
+#                 frames = pipeline.wait_for_frames()
+#                 aligned_frames = align.process(frames)
+#                 color_frame = aligned_frames.get_color_frame()
+#                 depth_frame = aligned_frames.get_depth_frame()
+#                 if not depth_frame or not color_frame:
+#                     continue
+
+#                 # import IPython; IPython.embed()
+
+#             with time_measure("IMU Calculation"):
+#                 # Camera pose estimation.
+#                 acc = frames[2].as_motion_frame().get_motion_data()
+#                 gyro = frames[3].as_motion_frame().get_motion_data()
+#                 timestamp = frames[3].as_motion_frame().get_timestamp()
+#                 # rotation_estimator.process_gyro(
+#                 #     np.array([gyro.x, gyro.y, gyro.z]), timestamp)
+#                 # rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
+#                 # theta = rotation_estimator.get_theta()
+#                 acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
+#                 if len(acc_vectors) > 200:
+#                     acc_vectors.popleft()
+#                 acc = np.mean(acc_vectors, axis=0)
+#                 imu_info = IMUInfo(acc)
+
+#                 # print(acc)
+#                 # print(np.array([acc.x, acc.y, acc.z]))
+
+#                 # print(theta)
+
+#             with time_measure("Frame Preparation"):
+#                 # frame = np.asanyarray(color_frame.get_data())
+#                 # depth_image = np.asanyarray(depth_frame.get_data())
+
+#                 frame = np.frombuffer(color_frame.get_data(), dtype=np.uint8).reshape(360, 640, 3)
+#                 depth_image = np.frombuffer(depth_frame.get_data(), dtype=np.uint16).reshape(360, 640)
+
+#                 # import IPython; IPython.embed()
+                
+
+#                 # depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(
+#                 #     depth_image, alpha=0.08), cv2.COLORMAP_JET)
+
+#                 # cv2.imshow("orig", frame)
+#                 # cv2.waitKey(2)
+
+#                 gray = np.frombuffer(memoryview(shared_gray), dtype=np.uint8).reshape((360, 640, 3))
+#                 # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+#                 cv2.cvtColor(frame, cv2.COLOR_BGR2RGB, gray)
+#                 # memoryview(shared_gray).cast('B')[:] = memoryview(gray).cast('B')[:]
+#                 # gray_shared = np.frombuffer(memoryview(shared_gray), dtype=np.uint8).reshape((360, 640, 3))
+
+#             with time_measure("Pass Image"):
+#                 # import IPython; IPython.embed()
+#                 visualizer.pass_image(frame, depth_image)
+
+#                 # ret, frame = cap.read()
+#                 # if frame is None:
+#                 #     break
+
+#                 # import IPython; IPython.embed()
+#                 # frame[depth_image > 2500] = 0
+#                 # frame[depth_image == 0] = 0
+#                 # depth_image[depth_image > 2500] = 0
+#                 # depth_image[depth_image == 0] = 0
+
+#             # with time_measure("Pass Images"):
+#             #     memoryview(vis_server.get_shared_memory()).cast('B')[:] = memoryview(frame).cast('B')[:]
+#                 # vis_server.pass_image(frame, depth_image)
+#                 # depth_colored = cv2.convertScaleAbs(depth_image, alpha=0.08)
+
+#             self.face_processor_queue.put(imu_info)
+#             self.hand_processor_queue.put(imu_info)
 @click.command()
 @click.option('--camera-id', '-c', default=0, type=int)
 @click.option('--run-name', default="general")
@@ -135,7 +240,7 @@ def cmd(
     #                                              ))
     face_processor = FaceRecognizerProcess(shared_gray, depth_image_shared,
                                            target_image_buf, IntrinsicMatrix(intrinsic_matrix),
-                                           visualizer.new_image_ready_event
+                                           visualizer.new_image_ready_event_for_face
                                            )
     face_processor.start()
 
@@ -145,7 +250,7 @@ def cmd(
                                            )
     hand_processor.start()
 
-    import pikapi.logging
+    import pikapi.utils.logging
     last_run = time.time()
     from collections import deque
     acc_vectors = deque([])
@@ -157,8 +262,8 @@ def cmd(
     try:
         while(True):
             # print( (time.time() - last_run))
-            if (time.time() - last_run) < 0.013:
-                continue
+            # if (time.time() - last_run) < 0.013:
+            #     continue
 
             with time_measure("Frame Fetch"):
                 last_run = time.time()
@@ -311,8 +416,8 @@ def cmd(
             cv2.putText(target_image, f"FPS: {estimated_fps}", (10, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
                         (255, 255, 255), 1, cv2.LINE_AA)
 
-            # print("CopyImage", np.mean(pikapi.logging.time_measure_result["CopyImage"]))
-            # print("CreateStack", np.mean(pikapi.logging.time_measure_result["Create Stack"]))
+            # print("CopyImage", np.mean(pikapi.utils.logging.time_measure_result["CopyImage"]))
+            # print("CreateStack", np.mean(pikapi.utils.logging.time_measure_result["Create Stack"]))
 
             TIMEOUT_S = 0.001
             # got_new_result = False
@@ -329,8 +434,9 @@ def cmd(
             #     latest_face_state.ParseFromString(result)
             # got_new_result = True
             result = face_processor.result_queue.get()
-            latest_face_state = ps.Face()
-            latest_face_state.ParseFromString(result)
+            if result is not None:
+                latest_face_state = ps.Face()
+                latest_face_state.ParseFromString(result)
 
             # if not hand_processor.result_queue.empty():
             # result = None
@@ -382,7 +488,7 @@ def cmd(
                 # import IPython
                 # IPython.embed()
 
-                perf_dict = dict(pikapi.logging.time_measure_result)
+                perf_dict = dict(pikapi.utils.logging.time_measure_result)
                 perf_dict['frame_ms'] = frame_times
 
                 face_processor.finish_flag.value = True

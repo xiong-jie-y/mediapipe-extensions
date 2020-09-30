@@ -1,4 +1,4 @@
-from pikapi.logging import time_measure
+from pikapi.utils.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time

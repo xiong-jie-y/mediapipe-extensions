@@ -1,4 +1,4 @@
-from pikapi.logging import time_measure
+from pikapi.utils.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time
@@ -37,7 +37,7 @@ import pyrealsense2 as rs
 #     landmark_list_copy[:, 1] *= height
 from numba import jit
 
-@pikapi.logging.save_argument
+@pikapi.utils.logging.save_argument
 def get_3d_center(face_landmark, width, height, depth_image, intrinsic_matrix):
     hand_landmark_points = get_camera_coord_landmarks(face_landmark, width, height, depth_image, intrinsic_matrix)
     zs = hand_landmark_points[:, 2]
@@ -57,7 +57,7 @@ def get_3d_center(face_landmark, width, height, depth_image, intrinsic_matrix):
     return hand_center
 
 # @jit(nopython=True)
-# @pikapi.logging.save_argument
+# @pikapi.utils.logging.save_argument
 def get_camera_coord_landmarks_numba(
         normalized_landmark_list: np.ndarray, width: int, height: int,
         depth_image: np.ndarray, ppx, ppy, fx, fy):

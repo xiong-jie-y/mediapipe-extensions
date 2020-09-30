@@ -177,6 +177,8 @@ public:
         {
             py::gil_scoped_release release;
 
+            InitPacket();
+
             // Prepare and add graph input packet.
             size_t frame_timestamp_us =
                 (double)cv::getTickCount() / (double)cv::getTickFrequency() * 1e6;
@@ -230,21 +232,7 @@ public:
             // LOG(INFO) << "Convert Image";
                     LOG(INFO) << "Getting other outputs";
         // Get other channels.
-        for (const auto &[key, poller] : channel_name_to_poller_)
-        {
-            // LOG(INFO) << poller->QueueSize();
-            if (poller->QueueSize() == 0) {
-                channel_name_to_pocket_[key] = nullptr;
-                continue;
-            } else {
-                mediapipe::Packet packet;
-                if (!poller->Next(&packet))
-                    LOG(INFO) << "error getting packet";
-                LOG(INFO) << "Getting " << key;
-                channel_name_to_pocket_[key] = std::make_shared<mediapipe::Packet>(packet);
-            }
-        }
-
+            MaybeFetch();
         }
 
         // Convert back to opencv for display or saving.
@@ -261,7 +249,7 @@ public:
         // {
         //     dstPt[i] = pt[i];
         // }
-
+        // MaybeFetch();
 
         // return result;
     }
@@ -271,17 +259,42 @@ public:
     //     return channel_name_to_pocket_[name].Get<T>();
     // }
 
+    void InitPacket() {
+        for (const auto &[key, poller] : channel_name_to_poller_)
+        {
+            channel_name_to_pocket_[key] = nullptr;
+        }
+    }
+
+    void MaybeFetch() {
+        for (const auto &[key, poller] : channel_name_to_poller_)
+        {
+            if (channel_name_to_pocket_[key] != nullptr) { continue; }
+            // LOG(INFO) << poller->QueueSize();
+            if (poller->QueueSize() == 0) {
+                channel_name_to_pocket_[key] = nullptr;
+                continue;
+            } else {
+                mediapipe::Packet packet;
+                if (!poller->Next(&packet))
+                    LOG(INFO) << "error getting packet";
+                LOG(INFO) << "Getting " << key;
+                channel_name_to_pocket_[key] = std::make_shared<mediapipe::Packet>(packet);
+            }
+        }
+    }
+
     template <typename T>
-    std::vector<std::vector<Eigen::Vector3d>> GetPoint3DListsFromLandmark(std::string name)
+    py::object GetPoint3DListsFromLandmark(std::string name)
     {
         if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
-            std::vector<std::vector<Eigen::Vector3d>> a(0);
-            return a;
+            // std::vector<std::vector<Eigen::Vector3d>> a(0);
+            return py::cast<py::none>(Py_None);
         }
 
         if (!channel_name_to_pocket_[name]) {
-            std::vector<std::vector<Eigen::Vector3d>> a(0);
-            return a;
+            // std::vector<std::vector<Eigen::Vector3d>> a(0);
+            return py::cast<py::none>(Py_None); // return a;
         }
 
         const auto &landmark_lists = channel_name_to_pocket_[name]->Get<T>();
@@ -289,7 +302,7 @@ public:
         if (landmark_lists.size() == 0)
         {
             std::vector<std::vector<Eigen::Vector3d>> a(0);
-            return a;
+            return py::cast(a);
         }
 
         auto dim_1 = landmark_lists.size();
@@ -306,20 +319,22 @@ public:
             }
         }
 
-        return point_3d_lists;
+        return py::cast(point_3d_lists);
     }
 
     template <typename T>
-    std::vector<Eigen::Vector3d> GetPoint3DListFromLandmark(std::string name)
+    py::object GetPoint3DListFromLandmark(std::string name)
     {
         if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
-            std::vector<Eigen::Vector3d> a(0);
-            return a;
+            throw "Error";
+            // std::vector<Eigen::Vector3d> a(0);
+            // return a;
         }
 
         if (!channel_name_to_pocket_[name]) {
-            std::vector<Eigen::Vector3d> a(0);
-            return a;
+            return py::cast<py::none>(Py_None);
+            // std::vector<Eigen::Vector3d> a(0);
+            // return a;
         }
 
         const auto &landmark_list = channel_name_to_pocket_[name]->Get<T>();
@@ -334,7 +349,7 @@ public:
             point_3d_lists[j] = Eigen::Vector3d(landmark_point.x(), landmark_point.y(), landmark_point.z());
         }
 
-        return point_3d_lists;
+        return py::cast(point_3d_lists);
     }
 
 
@@ -352,16 +367,21 @@ public:
     }
 
 
-    std::vector<py::bytes> GetProtoList(std::string name)
+    py::object GetProtoList(std::string name)
     {
         if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
-            std::vector<py::bytes> a(0);
-            return a;
+            // std::vector<py::bytes> a(0);
+            // LOG(ERROR) << "Error finding name";
+            // return a;
+            throw "Error";
+            return py::cast<py::none>(Py_None);
         }
 
         if (!channel_name_to_pocket_[name]) {
-            std::vector<py::bytes> a(0);
-            return a;
+            // std::vector<py::bytes> a(0);
+            // LOG(ERROR) << "Error name invalid";
+            // return a;
+            return py::cast<py::none>(Py_None);
         }
 
         std::vector<py::bytes> serializedProtoList;
@@ -372,22 +392,24 @@ public:
             // messageLite->SerializeToArray(buffer, size);
             serializedProtoList.push_back(py::bytes(messageLite->SerializeAsString()));
         }      
-        return serializedProtoList;
+        return py::cast(serializedProtoList);
     }
 
-    std::vector<std::string> GetStringArray(std::string name)
+    py::object GetStringArray(std::string name)
     {
         if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
-            std::vector<std::string> a(0);
-            return a;
+            // std::vector<std::string> a(0);
+            // return a;
+            return py::cast<py::none>(Py_None);
         }
 
         if (!channel_name_to_pocket_[name]) {
-            std::vector<std::string> a(0);
-            return a;
+            // std::vector<std::string> a(0);
+            // return a;
+            return py::cast<py::none>(Py_None);
         }
 
-        return channel_name_to_pocket_[name]->Get<std::vector<std::string>>();
+        return py::cast(channel_name_to_pocket_[name]->Get<std::vector<std::string>>());
     }
 
     // template <typename T>
@@ -418,6 +440,7 @@ PYBIND11_MODULE(graph_runner, m)
         .def("get_normalized_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::NormalizedLandmarkList>>)
         .def("get_normalized_landmark_list", &GraphRunner::GetPoint3DListFromLandmark<mediapipe::NormalizedLandmarkList>)
         .def("get_float", &GraphRunner::GetFloat)
+        .def("maybe_fetch", &GraphRunner::MaybeFetch)
         .def("get_proto_list", &GraphRunner::GetProtoList)
         .def("get_string_array", &GraphRunner::GetStringArray)
         .def("get_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::LandmarkList>>);

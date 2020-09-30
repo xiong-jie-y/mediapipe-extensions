@@ -15,6 +15,7 @@ pybind_extension(
         "@mediapipe//mediapipe/graphs/pose_tracking:upper_body_pose_tracking_gpu_deps",
         "@mediapipe//mediapipe/framework/port:map_util",
         "@mediapipe//mediapipe/graphs/iris_tracking:iris_tracking_gpu_deps",
+        "@mediapipe//mediapipe/calculators/core:packet_cloner_calculator",
     ],
 )
 

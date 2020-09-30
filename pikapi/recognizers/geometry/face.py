@@ -2,7 +2,7 @@ import ctypes
 from multiprocessing import Process, Queue, Value
 from pikapi.recognizers.base import PerformanceMeasurable
 from pikapi.gui.visualize_gui import VisualizeGUI
-from pikapi.logging import time_measure
+from pikapi.utils.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time
@@ -21,7 +21,7 @@ from pikapi import graph_runner
 import click
 
 import pikapi
-import pikapi.logging
+import pikapi.utils.logging
 import pikapi.mediapipe_util as pmu
 
 import pyrealsense2 as rs
@@ -29,7 +29,9 @@ import pyrealsense2 as rs
 from pikapi.utils.landmark import *
 from pikapi.core.camera import IMUInfo
 
-NOSE_INDEX = 4
+# NOSE_INDEX = 4
+# NOSE_INDEX = 5
+NOSE_INDEX = 1
 
 # @jit(nopython=True)
 def calculate_pose(denormalized_landmark: np.ndarray):
@@ -52,6 +54,13 @@ def calculate_pose(denormalized_landmark: np.ndarray):
     rot = Rotation.align_vectors([right, up, front], [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     return rot, center_to_nose_direction, up_direction
 
+
+import openvino_open_model_zoo_toolkit.open_model_zoo_toolkit as omztk
+
+def nd_3d_to_nd_2d(nd_3d):
+    return tuple([int(nd_3d[0]), int(nd_3d[1])])
+
+
 class FaceGeometryRecognizer(PerformanceMeasurable):
     """Calculate geometrical properties of face.
     """
@@ -61,13 +70,15 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         focal_length = intrinsic_matrix.fx
         self.runner = pikapi.graph_runner.GraphRunner(
             "pikapi/graphs/iris_tracking_gpu.pbtxt", [
-                "face_landmarks_with_iris", "left_iris_depth_mm", "right_iris_depth_mm"],
+                "cloned_face_detections", "left_iris_depth_mm", "right_iris_depth_mm", "cloned_face_landmarks_with_iris"],
             pmu.create_packet_map({"focal_length_pixel": focal_length})
         )
         self.intrinsic_matrix = intrinsic_matrix
         self.yes_or_no_estimator = YesOrNoEstimator()
         self.previous = None
         self.last_face_image = None
+        self.omz = omztk.openvino_omz()
+        self.hp = self.omz.headPoseEstimator()
 
     # def _get_eye_direction_and_position(face_iris_landmark):
     #     import IPython; IPython.embed()
@@ -86,9 +97,6 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         # import IPython; IPython.embed()
         return rot_sci.inv().apply(points)
 
-    def nd_3d_to_nd_2d(self, nd_3d):
-        return tuple([int(nd_3d[0]), int(nd_3d[1])])
-
     def _get_face_direction(self,
                             landmark_list, width, height, visualize_image, face_image
                             ):
@@ -104,13 +112,13 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         """
 
         cv2.line(visualize_image,
-                 self.nd_3d_to_nd_2d(denormalized_landmark[NOSE_INDEX]),
-                 self.nd_3d_to_nd_2d(
+                 nd_3d_to_nd_2d(denormalized_landmark[NOSE_INDEX]),
+                 nd_3d_to_nd_2d(
                      denormalized_landmark[NOSE_INDEX] + center_to_nose_direction * 4),
                  (255, 255, 255), 5)
         cv2.line(visualize_image,
-                 self.nd_3d_to_nd_2d(denormalized_landmark[164]),
-                 self.nd_3d_to_nd_2d(
+                 nd_3d_to_nd_2d(denormalized_landmark[164]),
+                 nd_3d_to_nd_2d(
                      denormalized_landmark[164] + up_direction * 4),
                  (255, 255, 255), 5)
 
@@ -120,7 +128,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
                         (255, 255, 255), 1, cv2.LINE_AA)
             text_height += 1
 
-        return rot_vec
+        return rot_vec, center_to_nose_direction, up_direction
 
     def _get_face_display_relation(self, center, imu_info):
         eye_camera_position = None
@@ -134,16 +142,19 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
 
             # Calculate face center position in unity.
             face_center_in_unity = np.copy(center)
+            print(face_center_in_unity)
             face_center_in_unity = self._adjust_by_imu(
                 np.array([face_center_in_unity]), imu_info)[0]
+            print(face_center_in_unity)
 
             # From camera coordinate to unity global coordinate.
             face_center_in_unity[0] = -face_center_in_unity[0]
-            face_center_in_unity[1] = 848 - (face_center_in_unity[1] + 150)
+            face_center_in_unity[1] = 848 - (face_center_in_unity[1] - 300)
             face_center_in_unity[2] += SCREEN_TO_CHAR
             face_center_in_unity[2] = -face_center_in_unity[2]
             center_in_unity_pb = ps.Vector(
                 x=face_center_in_unity[0]/1000, y=face_center_in_unity[1]/1000, z=face_center_in_unity[2]/1000)
+            print(center_in_unity_pb)
             # print("Center")
             # print(center_in_unity_pb)
             # print(face_center_in_unity)
@@ -194,23 +205,25 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
             # print(eye_camera_position)
             # cam_y = math.tan(math.atan2(center[1], center[2])) * center[1]
 
-        if center is None:
-            vec = self.previous
-        else:
-            vec = ps.Vector(x=center[0], y=-center[1], z=center[2])
-            self.previous = vec
+        # if center is None:
+        #     vec = self.previous
+        # else:
+        #     vec = ps.Vector(x=center[0], y=-center[1], z=center[2])
+        #     self.previous = vec
 
         relation_to_monitor = ps.FaceMonitorRelation(
             eye_camera_position=eye_camera_position,
             eye_camera_pose=camera_pose, 
             character_pose=character_pose
         )
-        return relation_to_monitor, center_in_unity_pb, vec
+        return relation_to_monitor, center_in_unity_pb
 
-    def _get_face(self, face_landmark, width, height, rgb_image, depth_image, visualize_image):
+    def _get_face(self, face_landmark, width, height, rgb_image, depth_image, visualize_image, imu_info):
         center = None
         hand_center = None
         center_to_nose_direction = None
+        front_vector = None
+        up_vector = None
         if len(face_landmark) != 0:
             min_x = int(min(face_landmark[:, 0]) * width)
             min_y = int(min(face_landmark[:, 1]) * height)
@@ -226,7 +239,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
             hand_center = pikapi.utils.landmark.get_3d_center(
                 face_landmark, width, height, depth_image, self.intrinsic_matrix)
             if hand_center is None:
-                return
+                return None
     
             mean_depth = hand_center[2]
 
@@ -277,7 +290,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
                             (255, 255, 255), 1, cv2.LINE_AA)
 
             with self.time_measure("Calc Face Direction"):
-                direction = self._get_face_direction(
+                direction, front_vector, up_vector = self._get_face_direction(
                     face_landmark, width, height, visualize_image, face_image)
             # direction = self._adjust_by_imu(
             #     np.array([direction]), imu_info)[0]
@@ -285,25 +298,31 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
                 x=direction[0], y=direction[1], z=direction[2])
 
             self.last_face_image = face_image
-            # cv2.imshow("Face Image", face_image)
+            cv2.imshow("Face Image", face_image)
+            cv2.waitKey(1) # For image to be shown.
 
             # print(np.mean([point[2] for point in face_landmark]))
 
-        # relation_to_monitor, center_in_unity, vec = self._get_face_display_relation(center, imu_info)
-        relation_to_monitor = None
-        center_in_unity = None
+        relation_to_monitor, center_in_unity = self._get_face_display_relation(hand_center, imu_info)
 
         if hand_center is None:
             vec = self.previous
         else:
             vec = ps.Vector(x=hand_center[0], y=hand_center[1], z=hand_center[2])
             self.previous = vec
+
+        def numpy_to_vec(npa):
+            if npa is None:
+                return None
+            return ps.Vector(x=npa[0], y=npa[1], z=npa[2])
         # print("Face Direction")
         # print(center_to_nose_direction)
+        # assert (center_in_unity is None and vec is None) or (center_in_unity is not None or vec is not None)
         return ps.Face(
             center=vec,
             center_in_unity=center_in_unity,
-            pose=ps.FacePose(rotation_vector=center_to_nose_direction),
+            pose=ps.FacePose(
+                rotation_vector=center_to_nose_direction, front_vector=numpy_to_vec(front_vector), up_vector=numpy_to_vec(up_vector)),
             relation_to_monitor=relation_to_monitor
         )
 
@@ -318,9 +337,8 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
             self.runner.process_frame(rgb_image)
 
         with self.time_measure("Run Face Postprocess"):
-            multi_face_landmarks = [self.runner.get_normalized_landmark_list("face_landmarks_with_iris")]
-
-            # from pikapi.logging import TimestampedData
+            # print(multi_face_landmarks)
+            # from pikapi.utils.logging import TimestampedData
             # state = self.yes_or_no_estimator.get_state(
             #     TimestampedData(current_time, multi_face_landmarks))
             # if state == 1:
@@ -332,11 +350,58 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
 
             # cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
             #             (255, 255, 255), 1, cv2.LINE_AA)
+            a = self.runner.get_normalized_landmark_list("cloned_face_landmarks_with_iris")
+            face_detections = self.runner.get_proto_list("cloned_face_detections")
+            # while a is None: #  or face_detections is None:
+            #     self.runner.maybe_fetch()
+            #     a = self.runner.get_normalized_landmark_list("face_landmarks_with_iris")
+                # face_detections = self.runner.get_proto_list("face_detections")
 
-            if len(multi_face_landmarks) != 0:
-                face_landmark = np.array(multi_face_landmarks[0])
-                return self._get_face(face_landmark, width, height, rgb_image, depth_image, visualize_image)
+            if face_detections is not None:
+                detection = face_detections[0]
+                from mediapipe.framework.formats.detection_pb2 import Detection
+                n = Detection()
+                n.ParseFromString(detection)
+                box = n.location_data.relative_bounding_box
+                p1 = (int(box.xmin * width), int(box.ymin * height))
+                p2 = (int((box.xmin + box.width) * width), int((box.ymin + box.height) * height))
 
+                print(p1)
+                print(p2)
+                cv2.rectangle(visualize_image,p1, p2,(0,255,0),3)
+
+                import openvino_open_model_zoo_toolkit.open_model_zoo_toolkit as omztk
+                
+                bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+                face_img = omztk.ocv_crop(bgr_image, p1, p2, scale=1.6)
+                ypr = self.hp.run(face_img)
+                print(ypr)
+                rot_axises = np.array([[0,0,-1.0], [-1.0, 0,0], [0, 1.0, 0]])
+                # rots = [Rotation.from_rotvec(ax * ad) for ax, ad in zip(rot_axises, ypr)]
+                # all_rot = rots[0] * rots[1] * rots[2]
+                all_rot = Rotation.from_rotvec([ypr[1], ypr[2], ypr[0]])
+                xyz = [all_rot.apply(p) for p in rot_axises]
+                points = [project_point(p, width, height, self.intrinsic_matrix) for p in xyz]
+                center_2d = p1
+                cv2.imshow("cropped", face_img)
+                for p in points:
+                    cv2.line(visualize_image, (p[0] + center_2d[0], p[1] + center_2d[1]), center_2d,
+                        (255, 255, 255), 5)
+                    
+
+            # print("dainyu")
+            if a is not None:
+                # multi_face_landmarks = [a]
+                face_landmark = np.array(a)
+
+                # while face_detections is None: #  or face_detections is None:
+                #     self.runner.maybe_fetch()
+                #     face_detections = self.runner.get_proto_list("face_rects_from_detections")
+
+                # print("Face Det")
+                # print(face_detections)
+                # print(face_landmarks)
+                return self._get_face(face_landmark, width, height, rgb_image, depth_image, visualize_image, imu_info)
 
 class FaceRecognizerProcess(Process):
     def __init__(self, rgb_image, depth_image, visualize_image, intrinsic_matrix, new_image_ready_event):
@@ -356,8 +421,8 @@ class FaceRecognizerProcess(Process):
         # print("startfjkldjfdkjfdkfdjlkfdlsda")
         recognizer = FaceGeometryRecognizer(self.intrinsic_matrix)
 
-        # pikapi.logging.manager_dict = md
-        # pikapi.logging.manager = manager
+        # pikapi.utils.logging.manager_dict = md
+        # pikapi.utils.logging.manager = manager
         # print("startfjkldjfdkjfdkfdjlkfdlsda")
 
         latest_imu_info = None
@@ -382,7 +447,10 @@ class FaceRecognizerProcess(Process):
                     latest_imu_info
                     )
                 self.new_image_ready_event.clear()
-                self.result_queue.put(face_state.SerializeToString())
+                if face_state is None:
+                    self.result_queue.put(None)
+                else:
+                    self.result_queue.put(face_state.SerializeToString())
                 
 
         self.perf_queue.put(dict(recognizer.time_measure_result))

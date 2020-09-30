@@ -5,7 +5,7 @@ import contextlib
 import ctypes
 from multiprocessing import Process, Queue, Value
 from pikapi.recognizers.base import PerformanceMeasurable
-from pikapi.logging import time_measure
+# from pikapi.logging import time_measure
 from numpy.core.fromnumeric import mean
 from pikapi.utils.unity import realsense_vec_to_unity_char_vec
 import time
@@ -24,7 +24,7 @@ from pikapi import graph_runner
 import click
 
 import pikapi
-import pikapi.logging
+import pikapi.utils.logging
 import pikapi.mediapipe_util as pmu
 
 import pyrealsense2 as rs
@@ -42,13 +42,14 @@ class HandGestureRecognizer(PerformanceMeasurable):
         super().__init__()
         self.hand_recognizer = pikapi.graph_runner.GraphRunner(
             "pikapi/graphs/multi_hand_tracking_gpu.pbtxt", [
-                "gesture_texts", "multi_hand_landmarks", "multi_handedness"], {})
+                "multi_hand_landmarks", "multi_handedness"], {})
         self.logger = logging.getLogger(__class__.__name__)
 
         # TODO: Change to camera object
         self.intrinsic_matrix = intrinsic_matrix
 
         self.record_trajectory = False
+        self.trajectory = []
         
 
     def _get_achimuitehoi_gesture(self, landmark_list: np.ndarray,
@@ -186,7 +187,7 @@ class HandGestureRecognizer(PerformanceMeasurable):
         # if pressed_key == ord("t"):
         #     self.logger.info("Start Logging")
         #     self.trajectory = []
-        #     self.record_trajectory = True
+        # self.record_trajectory = True
 
         if self.record_trajectory:
             self.trajectory.append(
@@ -206,14 +207,31 @@ class HandGestureRecognizer(PerformanceMeasurable):
         with self.time_measure("Run Hand Graph"):
         # Estimate hand landmarks and gesture text
             self.hand_recognizer.process_frame(rgb_image)
-
+        hand_landmarks = None
+        multi_handedness = None
         with self.time_measure("Get Hand Landmark Result"):
-            hand_landmarks = np.array(
-                self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks"))
-            gesture_texts = self.hand_recognizer.get_string_array("gesture_texts")
+            hand_landmarks = \
+                self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks")
+            multi_handedness = self.hand_recognizer.get_proto_list("multi_handedness")
+            # gesture_texts = self.hand_recognizer.get_string_array("gesture_texts")
+            # if hand_landmarks is None:
+            #     hand_landmarks = np.array([])
+            # else:
+            #     hand_landmarks = np.array(hand_landmarks)
+            # if multi_handedness is None:
+            #     multi_handedness = []
+
+            # print(hand_landmarks)
+            while hand_landmarks is None or multi_handedness is None:
+                self.hand_recognizer.maybe_fetch()
+                hand_landmarks = self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks")
+                multi_handedness = self.hand_recognizer.get_proto_list("multi_handedness")
+
+            hand_landmarks=  np.array(hand_landmarks)
+            # print(hand_landmarks)
+            # print(self.hand_recognizer.get_normalized_landmark_lists("multi_hand_landmarks"))
+            # print(multi_handedness)
             from mediapipe.framework.formats.classification_pb2 import ClassificationList
-            multi_handedness = self.hand_recognizer.get_proto_list(
-                "multi_handedness")
             multi_handedness_parsed = []
             for handedness in multi_handedness:
                 a = ClassificationList()
@@ -314,8 +332,8 @@ class HandGestureRecognizer(PerformanceMeasurable):
                             denormalized_landmark_list, palm_rotation)
                     palm_rotvec = paxis * pangle
                     # print(paxis, pangle)
-                # self._accumulate_trajectory(
-                #     hand_landmark_list, width, height, visualize_image)
+                self._accumulate_trajectory(
+                    hand_landmark_list, width, height, visualize_image)
 
                 # print(hand_center)
                 hand_states.append(ps.Hand(
