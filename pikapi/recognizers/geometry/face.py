@@ -29,9 +29,9 @@ import pyrealsense2 as rs
 from pikapi.utils.landmark import *
 from pikapi.core.camera import IMUInfo
 
-# NOSE_INDEX = 4
+NOSE_INDEX = 4
 # NOSE_INDEX = 5
-NOSE_INDEX = 1
+# NOSE_INDEX = 1
 
 # @jit(nopython=True)
 def calculate_pose(denormalized_landmark: np.ndarray):
@@ -70,7 +70,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         focal_length = intrinsic_matrix.fx
         self.runner = pikapi.graph_runner.GraphRunner(
             "pikapi/graphs/iris_tracking_gpu.pbtxt", [
-                "cloned_face_detections", "left_iris_depth_mm", "right_iris_depth_mm", "cloned_face_landmarks_with_iris"],
+                "cloned_face_detections", "face_detections", "left_iris_depth_mm", "right_iris_depth_mm", "cloned_face_landmarks_with_iris"],
             pmu.create_packet_map({"focal_length_pixel": focal_length})
         )
         self.intrinsic_matrix = intrinsic_matrix
@@ -79,6 +79,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         self.last_face_image = None
         self.omz = omztk.openvino_omz()
         self.hp = self.omz.headPoseEstimator()
+        self.emo = self.omz.emotionEstimator()
 
     # def _get_eye_direction_and_position(face_iris_landmark):
     #     import IPython; IPython.embed()
@@ -142,10 +143,10 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
 
             # Calculate face center position in unity.
             face_center_in_unity = np.copy(center)
-            print(face_center_in_unity)
+            # print(face_center_in_unity)
             face_center_in_unity = self._adjust_by_imu(
                 np.array([face_center_in_unity]), imu_info)[0]
-            print(face_center_in_unity)
+            # print(face_center_in_unity)
 
             # From camera coordinate to unity global coordinate.
             face_center_in_unity[0] = -face_center_in_unity[0]
@@ -154,7 +155,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
             face_center_in_unity[2] = -face_center_in_unity[2]
             center_in_unity_pb = ps.Vector(
                 x=face_center_in_unity[0]/1000, y=face_center_in_unity[1]/1000, z=face_center_in_unity[2]/1000)
-            print(center_in_unity_pb)
+            # print(center_in_unity_pb)
             # print("Center")
             # print(center_in_unity_pb)
             # print(face_center_in_unity)
@@ -351,42 +352,63 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
             # cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
             #             (255, 255, 255), 1, cv2.LINE_AA)
             a = self.runner.get_normalized_landmark_list("cloned_face_landmarks_with_iris")
-            face_detections = self.runner.get_proto_list("cloned_face_detections")
+            face_detections = self.runner.get_proto_list("face_detections")
+            start = time.time()
+            while face_detections is None:
+                if (time.time() - start) > 0.020:
+                    break
+                self.runner.maybe_fetch()
+                face_detections = self.runner.get_proto_list("face_detections")
             # while a is None: #  or face_detections is None:
             #     self.runner.maybe_fetch()
             #     a = self.runner.get_normalized_landmark_list("face_landmarks_with_iris")
                 # face_detections = self.runner.get_proto_list("face_detections")
 
             if face_detections is not None:
-                detection = face_detections[0]
-                from mediapipe.framework.formats.detection_pb2 import Detection
-                n = Detection()
-                n.ParseFromString(detection)
-                box = n.location_data.relative_bounding_box
-                p1 = (int(box.xmin * width), int(box.ymin * height))
-                p2 = (int((box.xmin + box.width) * width), int((box.ymin + box.height) * height))
+                for detection in face_detections:
+                    # detection = face_detections[0]
+                    from mediapipe.framework.formats.detection_pb2 import Detection
+                    n = Detection()
+                    n.ParseFromString(detection)
+                    box = n.location_data.relative_bounding_box
+                    p1 = (int(box.xmin * width), int(box.ymin * height))
+                    p2 = (int((box.xmin + box.width) * width), int((box.ymin + box.height) * height))
 
-                print(p1)
-                print(p2)
-                cv2.rectangle(visualize_image,p1, p2,(0,255,0),3)
+                    # print(p1)
+                    # print(p2)
+                    cv2.rectangle(visualize_image,p1, p2,(0,255,0),3)
 
-                import openvino_open_model_zoo_toolkit.open_model_zoo_toolkit as omztk
-                
-                bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
-                face_img = omztk.ocv_crop(bgr_image, p1, p2, scale=1.6)
-                ypr = self.hp.run(face_img)
-                print(ypr)
-                rot_axises = np.array([[0,0,-1.0], [-1.0, 0,0], [0, 1.0, 0]])
-                # rots = [Rotation.from_rotvec(ax * ad) for ax, ad in zip(rot_axises, ypr)]
-                # all_rot = rots[0] * rots[1] * rots[2]
-                all_rot = Rotation.from_rotvec([ypr[1], ypr[2], ypr[0]])
-                xyz = [all_rot.apply(p) for p in rot_axises]
-                points = [project_point(p, width, height, self.intrinsic_matrix) for p in xyz]
-                center_2d = p1
-                cv2.imshow("cropped", face_img)
-                for p in points:
-                    cv2.line(visualize_image, (p[0] + center_2d[0], p[1] + center_2d[1]), center_2d,
-                        (255, 255, 255), 5)
+                    import openvino_open_model_zoo_toolkit.open_model_zoo_toolkit as omztk
+                    
+                    bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+                    face_img = omztk.ocv_crop(bgr_image, p1, p2, scale=1.8)
+                    ypr = self.hp.run(face_img)
+                    # print(yp)
+                    print("YPR")
+                    print(ypr)
+                    rot_axises = np.array([[0,-1, 0], [1.0, 0, 0], [0, 0, -1]], dtype=np.float32)
+                    rots = [Rotation.from_rotvec(ax * np.deg2rad(ad)) for ax, ad in zip(rot_axises, ypr)]
+                    all_rot = rots[2] * rots[1] * rots[0]
+                    # all_rot = Rotation.from_euler('xyz', ypr)
+                    # print(all_rot.as_rotvec())
+                    # all_rot = Rotation.from_rotvec([ypr[1], ypr[2], ypr[0]])
+                    # all_rot = Rotation.from_euler()
+                    # all_rot = Rotation.from_euler('YXZ', ypr)
+                    face_rot_img = omztk.ocv_rotate(face_img, ypr[2])
+                    emotion = self.emo.run(face_rot_img)
+                    print(emotion)
+                    base_frame = np.array([[0,-1, 0], [1.0, 0, 0], [0, 0, -1]], dtype=np.float32)
+                    center_2d = np.array([0.0, 0, 10])
+                    center_2dd  = tuple(project_point(center_2d, width, height, self.intrinsic_matrix))
+                    print(center_2dd)
+                    xyz = np.array([all_rot.apply(p * 2.0) + center_2d for p in base_frame])
+    
+                    points = [project_point(p, width, height, self.intrinsic_matrix) for p in xyz]
+                    cv2.imshow("cropped", face_rot_img)
+                    for p in points:
+                        cv2.line(visualize_image, (p[0], p[1]), 
+                            center_2dd,
+                            (255, 255, 255), 5)
                     
 
             # print("dainyu")
