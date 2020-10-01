@@ -70,7 +70,8 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         focal_length = intrinsic_matrix.fx
         self.runner = pikapi.graph_runner.GraphRunner(
             "pikapi/graphs/iris_tracking_gpu.pbtxt", [
-                "cloned_face_detections", "face_detections", "left_iris_depth_mm", "right_iris_depth_mm", "cloned_face_landmarks_with_iris"],
+                "cloned_face_detections", "face_detections", "left_iris_depth_mm", "right_iris_depth_mm", "cloned_face_landmarks_with_iris",
+                "cloned_left_eye_rect_from_landmarks", "cloned_right_eye_rect_from_landmarks"],
             pmu.create_packet_map({"focal_length_pixel": focal_length})
         )
         self.intrinsic_matrix = intrinsic_matrix
@@ -80,6 +81,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         self.omz = omztk.openvino_omz()
         self.hp = self.omz.headPoseEstimator()
         self.emo = self.omz.emotionEstimator()
+        self.gaze_estimator = self.omz.gazeEstimator()
 
     # def _get_eye_direction_and_position(face_iris_landmark):
     #     import IPython; IPython.embed()
@@ -352,19 +354,25 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
             # cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
             #             (255, 255, 255), 1, cv2.LINE_AA)
             a = self.runner.get_normalized_landmark_list("cloned_face_landmarks_with_iris")
-            face_detections = self.runner.get_proto_list("face_detections")
+            face_detections = self.runner.get_proto_list("cloned_face_detections")
+            left_eye_rect = self.runner.get_proto("cloned_left_eye_rect_from_landmarks")
             start = time.time()
-            while face_detections is None:
+            while face_detections is None or left_eye_rect is None:
                 if (time.time() - start) > 0.020:
                     break
                 self.runner.maybe_fetch()
-                face_detections = self.runner.get_proto_list("face_detections")
+                face_detections = self.runner.get_proto_list("cloned_face_detections")
+                left_eye_rect = self.runner.get_proto("cloned_left_eye_rect_from_landmarks")
             # while a is None: #  or face_detections is None:
             #     self.runner.maybe_fetch()
             #     a = self.runner.get_normalized_landmark_list("face_landmarks_with_iris")
                 # face_detections = self.runner.get_proto_list("face_detections")
 
             if face_detections is not None:
+                from mediapipe.framework.formats.rect_pb2 import NormalizedRect
+                rect = NormalizedRect()
+                rect.ParseFromString(left_eye_rect)
+                # print(rect)
                 for detection in face_detections:
                     # detection = face_detections[0]
                     from mediapipe.framework.formats.detection_pb2 import Detection
@@ -403,6 +411,8 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
                     print(center_2dd)
                     xyz = np.array([all_rot.apply(p * 2.0) + center_2d for p in base_frame])
     
+                    print(self.gaze_estimator.infer_gaze_pose(rgb_image, , ypr))
+
                     points = [project_point(p, width, height, self.intrinsic_matrix) for p in xyz]
                     cv2.imshow("cropped", face_rot_img)
                     for p in points:
