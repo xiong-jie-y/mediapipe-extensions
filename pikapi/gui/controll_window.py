@@ -3,6 +3,7 @@ from PyQt5.Qt import Qt
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel
 
+
 class MainWindow(QMainWindow):
 
     def __init__(self, key_state, action):
@@ -26,7 +27,6 @@ class MainWindow(QMainWindow):
 
         if event.key() == Qt.Key_D:
             self.action.value = 1
-
 
     def keyReleaseEvent(self, event):
         self.key_state.value = 0

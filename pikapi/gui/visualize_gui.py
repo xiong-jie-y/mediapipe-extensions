@@ -62,6 +62,8 @@ class VisualizeGUI():
             self.buf_ready.clear()
             self.new_image_ready_event = multiprocessing.Event()
             self.new_image_ready_event.clear()
+            self.new_image_ready_event_for_face = multiprocessing.Event()
+            self.new_image_ready_event_for_face.clear()
             self.p1 = multiprocessing.Process(
                 target=_visualize_image,
                 args=(
@@ -76,9 +78,11 @@ class VisualizeGUI():
         if self.run_multiprocess:
             self.buf_ready.clear()
             self.new_image_ready_event.clear()
+            self.new_image_ready_event_for_face.clear()
             memoryview(self.buf1).cast('B')[:] = memoryview(image).cast('B')[:]
             memoryview(self.depth_image).cast('B')[:] = memoryview(depth_image).cast('B')[:]
             self.new_image_ready_event.set()
+            self.new_image_ready_event_for_face.set()
             # buf_dict["buf"] = target_image
             # memoryview(buf1).cast('B')[:] = target_image
 
