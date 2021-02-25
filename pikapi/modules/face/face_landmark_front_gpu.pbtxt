@@ -47,34 +47,10 @@ output_stream: "ROIS_FROM_LANDMARKS:face_rects_from_landmarks"
 # (std::vector<NormalizedRect>)
 output_stream: "ROIS_FROM_DETECTIONS:face_rects_from_detections"
 
-# Determines if an input vector of NormalizedRect has a size greater than or
-# equal to the provided num_faces.
-node {
-  calculator: "NormalizedRectVectorHasMinSizeCalculator"
-  input_stream: "ITERABLE:prev_face_rects_from_landmarks"
-  input_side_packet: "num_faces"
-  output_stream: "prev_has_enough_faces"
-}
-
-# Drops the incoming image if FaceLandmarkGpu was able to identify face presence
-# in the previous image. Otherwise, passes the incoming image through to trigger
-# a new round of face detection in FaceDetectionFrontGpu.
-node {
-  calculator: "GateCalculator"
-  input_stream: "image"
-  input_stream: "DISALLOW:prev_has_enough_faces"
-  output_stream: "gated_image"
-  options: {
-    [mediapipe.GateCalculatorOptions.ext] {
-      empty_packets_as_allow: true
-    }
-  }
-}
-
 # Detects faces.
 node {
   calculator: "FaceDetectionFrontGpuAnyModel"
-  input_stream: "IMAGE:gated_image"
+  input_stream: "IMAGE:image"
   input_side_packet: "MODEL_PATH:detection_model_file_path"
   output_stream: "DETECTIONS:all_face_detections"
 }
@@ -90,7 +66,7 @@ node {
 # Calculate size of the image.
 node {
   calculator: "ImagePropertiesCalculator"
-  input_stream: "IMAGE_GPU:gated_image"
+  input_stream: "IMAGE_GPU:image"
   output_stream: "SIZE:gated_image_size"
 }
 

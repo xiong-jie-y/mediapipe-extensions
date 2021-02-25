@@ -1,11 +1,13 @@
 from collections import defaultdict, namedtuple
 import contextlib
+from dataclasses import fields
 import glob
 import json
 from multiprocessing import Manager
 from multiprocessing.managers import BaseManager
 import pickle
 import os
+from pikapi.formats.basics import ImageFrame, Timestamped
 from pikapi.core.camera import IntrinsicMatrix
 import time
 from typing import Any, Dict, List, NamedTuple
@@ -104,10 +106,6 @@ def time_measure(log_name):
     # manager_dict[log_name].append((end_time - start_time) * 1000)
     # print(log_name, end_time - start_time)
 
-class TimestampedData(NamedTuple):
-    timestamp: float
-    data: Any
-
 class HumanReadableLog:
     """Log that is saved as a human readable format.
 
@@ -117,14 +115,14 @@ class HumanReadableLog:
 
     def __init__(self, plain_data=None, image_data=None) -> None:
         if plain_data is None:
-            self.plain_data: defaultdict[int, List[TimestampedData]] = defaultdict(list)
+            self.plain_data: defaultdict[int, List[Timestamped]] = defaultdict(list)
         else:
-            self.plain_data: defaultdict[int, List[TimestampedData]] = defaultdict(list, plain_data)
+            self.plain_data: defaultdict[int, List[Timestamped]] = defaultdict(list, plain_data)
 
         if image_data is None:
-            self.image_data: defaultdict[int, List[TimestampedData]] = defaultdict(list)
+            self.image_data: defaultdict[int, List[Timestamped]] = defaultdict(list)
         else:
-            self.image_data: defaultdict[int, List[TimestampedData]] = defaultdict(list, image_data)
+            self.image_data: defaultdict[int, List[Timestamped]] = defaultdict(list, image_data)
 
     @classmethod
     def load_from_path(cls, output_path):
@@ -168,8 +166,15 @@ class HumanReadableLog:
 
         return HumanReadableLog(plain_data, image_data)
 
-    def add_data(self, name, timestamp, data):
-        self.plain_data[name].append(TimestampedData(timestamp, data))
+    def add_data(self, name, data):
+        self.plain_data[name].append(data)
+
+    def add_input_data(self, name, data):
+        for field in fields(data):
+            if field.type == ImageFrame:
+                self.add_data(f"{name}.{field.name}", data.getattr(field.name))
+            else:
+                self.add_data(f"{name}.{field.name}", data.getattr(field.name))
 
     def add_image(self, name, timestamp, image):
         self.image_data[name].append(TimestampedData(timestamp, image))

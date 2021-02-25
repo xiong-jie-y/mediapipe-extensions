@@ -6,11 +6,9 @@ import time
 
 import numpy as np
 from pikapi.head_gestures import YesOrNoEstimator
-import pikapi.logging
+import pikapi.utils.logging
 from collections import defaultdict
 import cv2
-
-from pikapi.graph_runner_cpu import GraphRunnerCpu
 
 import click
 
@@ -26,6 +24,7 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
     cap = cv2.VideoCapture(camera_id)
 
     if running_mode == "cpu":
+        from pikapi.graph_runner_cpu import GraphRunnerCpu
         print("Running on cpu mode")
         runner = GraphRunnerCpu(
             "graphs/face_mesh_desktop_live_any_model_cpu.pbtxt", 
@@ -53,7 +52,7 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
             })
         )
 
-    log = pikapi.logging.HumanReadableLog()
+    log = pikapi.utils.logging.HumanReadableLog()
 
     numpy_array_lists = defaultdict(list)
 
@@ -113,7 +112,7 @@ def recognize_head_gesture_live(camera_id, running_mode, only_save_detections, l
                     for multi_face_landmark in multi_face_landmarks]
 
             state = yes_or_no_estimator.get_state(
-                pikapi.logging.TimestampedData(current_time, multi_face_landmarks))
+                pikapi.utils.logging.TimestampedData(current_time, multi_face_landmarks))
 
             if state == 1:
                 cv2.putText(blank_image, "Yes", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,

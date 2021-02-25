@@ -57,7 +57,7 @@ class RotationEstimator {
   theta; higher alpha gives more weight to gyro, but too high values cause
   drift; lower alpha gives more weight to accelerometer, which is more sensitive
   to disturbances */
-  float alpha_ = 0.00;
+  float alpha_ = 0.7;
   bool first_ = true;
   // Keeps the arrival time of previous gyro frame
   double last_ts_gyro = 0;
@@ -102,8 +102,14 @@ class RotationEstimator {
 
     // Calculate rotation angle from accelerometer data
     accel_angle.z = atan2(accel_data.y(), accel_data.z());
+    if (accel_angle.z < 0) {
+      accel_angle.z += 2 * PI;
+    }
     accel_angle.x = atan2(accel_data.x(), sqrt(accel_data.y() * accel_data.y() +
                                              accel_data.z() * accel_data.z()));
+    if (accel_angle.x < 0) {
+      accel_angle.x += 2 * PI;
+    }
 
     // If it is the first_ iteration, set initial pose of camera according to
     // accelerometer data (note the different handling for Y axis)

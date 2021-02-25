@@ -339,20 +339,22 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
         with self.time_measure("Run Face Graph"):
             self.runner.process_frame(rgb_image)
 
+        # with self.time_measure("Head Gesture Recognition"):
+        #     from pikapi.utils.logging import TimestampedData
+        #     state = self.yes_or_no_estimator.get_state(
+        #         TimestampedData(current_time, multi_face_landmarks))
+        #     if state == 1:
+        #         state = "Yes"
+        #     elif state == -1:
+        #         state = "No"
+        #     else:
+        #         state = "No Gesture"
+
+        #     cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
+        #                 (255, 255, 255), 1, cv2.LINE_AA)
+
         with self.time_measure("Run Face Postprocess"):
             # print(multi_face_landmarks)
-            # from pikapi.utils.logging import TimestampedData
-            # state = self.yes_or_no_estimator.get_state(
-            #     TimestampedData(current_time, multi_face_landmarks))
-            # if state == 1:
-            #     state = "Yes"
-            # elif state == -1:
-            #     state = "No"
-            # else:
-            #     state = "No Gesture"
-
-            # cv2.putText(visualize_image, state, (min_x, min_y), cv2.FONT_HERSHEY_PLAIN, 1.0,
-            #             (255, 255, 255), 1, cv2.LINE_AA)
             a = self.runner.get_normalized_landmark_list("cloned_face_landmarks_with_iris")
             face_detections = self.runner.get_proto_list("cloned_face_detections")
             left_eye_rect = self.runner.get_proto("cloned_left_eye_rect_from_landmarks")
@@ -370,8 +372,8 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
 
             if face_detections is not None:
                 from mediapipe.framework.formats.rect_pb2 import NormalizedRect
-                rect = NormalizedRect()
-                rect.ParseFromString(left_eye_rect)
+                # rect = NormalizedRect()
+                # rect.ParseFromString(left_eye_rect)
                 # print(rect)
                 for detection in face_detections:
                     # detection = face_detections[0]
@@ -411,7 +413,7 @@ class FaceGeometryRecognizer(PerformanceMeasurable):
                     print(center_2dd)
                     xyz = np.array([all_rot.apply(p * 2.0) + center_2d for p in base_frame])
     
-                    print(self.gaze_estimator.infer_gaze_pose(rgb_image, , ypr))
+                    # print(self.gaze_estimator.infer_gaze_pose(rgb_image, , ypr))
 
                     points = [project_point(p, width, height, self.intrinsic_matrix) for p in xyz]
                     cv2.imshow("cropped", face_rot_img)

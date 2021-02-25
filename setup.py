@@ -136,6 +136,7 @@ class BuildBazelExtension(build_ext.build_ext):
         bazel_argv = [
             'bazel',
             'build',
+            '--jobs', '5',
         ] + ([] if development else ['--compilation_mode=opt']) \
         + ext.bazel_args + [
             str(ext.bazel_target + '.so'),
@@ -154,6 +155,9 @@ class BuildBazelExtension(build_ext.build_ext):
             ext_dest_dir, ext.target_name + '.so')
         print(f"Copying from {ext_bazel_bin_path} to {ext_dest_path}")
         shutil.copyfile(ext_bazel_bin_path, ext_dest_path)
+        if development:
+            shutil.copyfile(ext_bazel_bin_path, os.path.join("pikapi", ext.target_name + '.so'))
+
 
 class BuildBazelExtensionProd(BuildBazelExtension):
     def run(self):
@@ -177,7 +181,7 @@ setuptools.setup(
     install_requires=_parse_requirements('requirements.txt'),
     cmdclass={
         'gen_protos': GeneratePyProtos,
-        'build_ext': BuildBazelExtensionDev,
+        'build_ext': BuildBazelExtensionProd,
         # 'build_ext_dev': BuildBazelExtensionDev,
     },
     # data_files=[

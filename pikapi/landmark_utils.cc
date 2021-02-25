@@ -116,7 +116,7 @@ std::tuple<Eigen::Vector3d, double> EstimatePalmRotation(
     } else if (direction == "Left") {
         baseMatrix << 1, 0, 0,
                     0, -1, 0,
-                    0, 0, 1;   
+                    0, 0, 1;
     }        
     auto rotation = EstimatePalmAngleFromBase(landmark_list, baseMatrix);
     return std::make_tuple(rotation.axis(), rotation.angle());

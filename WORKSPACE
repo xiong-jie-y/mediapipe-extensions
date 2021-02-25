@@ -3,6 +3,12 @@ workspace(name = "pikapi")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+http_archive(
+    name = "onnx_runtime",
+    urls = ["https://github.com/microsoft/onnxruntime/releases/download/v1.4.0/onnxruntime-linux-x64-gpu-1.4.0.tgz"],
+    build_file = "@//third_party:onnx_runtime.BUILD",
+)
+
 # Need to update mediapipe dependencies below when updating mediapipe.
 git_repository(
     name = "mediapipe",

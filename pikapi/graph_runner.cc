@@ -395,6 +395,26 @@ public:
         return py::cast(serializedProtoList);
     }
 
+    py::object GetProto(std::string name)
+    {
+        if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
+            // std::vector<py::bytes> a(0);
+            // LOG(ERROR) << "Error finding name";
+            // return a;
+            throw "Error";
+            return py::cast<py::none>(Py_None);
+        }
+
+        if (!channel_name_to_pocket_[name]) {
+            // std::vector<py::bytes> a(0);
+            // LOG(ERROR) << "Error name invalid";
+            // return a;
+            return py::cast<py::none>(Py_None);
+        }
+
+        return py::bytes(channel_name_to_pocket_[name]->GetProtoMessageLite().SerializeAsString());
+    }
+
     py::object GetStringArray(std::string name)
     {
         if (channel_name_to_pocket_.find(name) == channel_name_to_pocket_.end()) {
@@ -442,6 +462,7 @@ PYBIND11_MODULE(graph_runner, m)
         .def("get_float", &GraphRunner::GetFloat)
         .def("maybe_fetch", &GraphRunner::MaybeFetch)
         .def("get_proto_list", &GraphRunner::GetProtoList)
+        .def("get_proto", &GraphRunner::GetProto)
         .def("get_string_array", &GraphRunner::GetStringArray)
         .def("get_landmark_lists", &GraphRunner::GetPoint3DListsFromLandmark<std::vector<mediapipe::LandmarkList>>);
     // .def("get_landmark_lists_pb", &GraphRunner::GetProtobufObject<std::vector<mediapipe::NormalizedLandmarkList>>);

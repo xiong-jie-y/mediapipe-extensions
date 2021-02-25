@@ -49,25 +49,28 @@ def get_focal_length(camera_id):
 @click.option('--camera-id', '-c', default=0, type=int)
 @click.option('--relative-depth', is_flag=True)
 def cmd(camera_id, relative_depth):
-    focal_length = get_focal_length(camera_id)
-
     cap = cv2.VideoCapture(camera_id)
 
     if not relative_depth:
+        focal_length = get_focal_length(camera_id)
         runner = pikapi.graph_runner.GraphRunner(
             "pikapi/graphs/iris_tracking_gpu.pbtxt", [
                 "face_landmarks_with_iris", "left_iris_depth_mm", "right_iris_depth_mm"],
             pmu.create_packet_map({"focal_length_pixel": focal_length})
         )
     else:
+        # runner = pikapi.graph_runner.GraphRunner(
+        #     "pikapi/graphs/face_mesh_desktop_live_any_model.pbtxt", [
+        #         "multi_face_landmarks"],
+        #     pmu.create_packet_map({
+        #         "detection_model_file_path": pikapi.get_data_path("models/face_detection_front.tflite"),
+        #         "landmark_model_file_path": pikapi.get_data_path("models/face_landmark.tflite"),
+        #     })
+        # )
         runner = pikapi.graph_runner.GraphRunner(
-            "pikapi/graphs/face_mesh_desktop_live_any_model.pbtxt", [
-                "multi_face_landmarks"],
-            pmu.create_packet_map({
-                "detection_model_file_path": pikapi.get_data_path("models/face_detection_front.tflite"),
-                "landmark_model_file_path": pikapi.get_data_path("models/face_landmark.tflite"),
-            })
-        )
+            "pikapi/graphs/multi_hand_tracking_gpu.pbtxt", [
+                "multi_hand_landmarks"],
+            {})
 
     while(True):
         ret, frame = cap.read()
@@ -86,17 +89,8 @@ def cmd(camera_id, relative_depth):
         print(processed_frame.shape)
         blank_image = np.zeros(processed_frame.shape, np.uint8)
 
-        multi_face_landmarks = [runner.get_normalized_landmark_list(
-            "face_landmarks_with_iris")]
-        left_mm = runner.get_float("left_iris_depth_mm")
-        right_mm = runner.get_float("right_iris_depth_mm")
-        if left_mm is not None and right_mm is not None:
-            # cv2.putText(blank_image, str(int((left_mm + right_mm)/2)) + "[mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 4.0,
-            #     (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.putText(blank_image, f"Left: {left_mm} [mm]", (0, 25), cv2.FONT_HERSHEY_PLAIN, 2.0,
-                        (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.putText(blank_image, f"Right: {right_mm} [mm]", (0, 50), cv2.FONT_HERSHEY_PLAIN, 2.0,
-                        (255, 255, 255), 1, cv2.LINE_AA)
+        multi_face_landmarks = runner.get_normalized_landmark_lists(
+            "multi_hand_landmarks")
 
         for face_landmark in multi_face_landmarks:
             if len(face_landmark) != 0:
@@ -106,7 +100,7 @@ def cmd(camera_id, relative_depth):
                         point[1] * frame.shape[0])), 3, (255, 0, 0), thickness=-1, lineType=cv2.LINE_AA)
                 # print(np.mean([point[2] for point in face_landmark]))
 
-        cv2.imshow("Frame", blank_image)
+        cv2.imshow("Frame", processed_frame)
 
         pressed_key = cv2.waitKey(3)
         if pressed_key == ord("a"):

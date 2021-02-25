@@ -15,13 +15,23 @@ message Quaternion {
     float w = 4;
 }
 
+message FacePose {
+    Vector rotation_vector = 1;
+    Vector front_vector = 2;
+    Vector up_vector = 3;
+}
+
+message FaceMonitorRelation {
+    Vector eye_camera_position = 1;
+    Quaternion eye_camera_pose = 2;
+    Quaternion character_pose = 3;
+}
+
 message Face {
     Vector center = 1;
-    Vector eye_camera_position = 2;
-    Quaternion eye_camera_pose = 3;
-    Quaternion character_pose = 4;
-    Vector center_in_unity = 5;
-    Vector direction_vector_in_unity = 6;
+    FacePose pose = 2;
+    FaceMonitorRelation relation_to_monitor = 3;
+    Vector center_in_unity = 4;
 }
 
 message Finger {
@@ -40,6 +50,8 @@ message Hand {
     repeated string gesture_names = 2;
     string hand_exist_side = 3;
     repeated Finger fingers = 4;
+    Vector center = 5;
+    Vector palm_rotation = 6;
 }
 
 message Bone {

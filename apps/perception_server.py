@@ -5,6 +5,7 @@ import ctypes
 import multiprocessing
 from multiprocessing import Queue
 import os
+from pikapi.devices.realsense import RGBDWithIMU
 from pikapi.gui.visualize_gui import VisualizeGUI, create_visualize_gui_manager
 from pikapi.utils.logging import create_logger_manager, create_mp_logger, time_measure
 from threading import Thread
@@ -166,21 +167,7 @@ def cmd(
     publisher = context.socket(zmq.PUB)
     publisher.bind("tcp://127.0.0.1:9998")
 
-    # Alignオブジェクト生成
-    config = rs.config()
-    #config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
-    #config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
-    #
-    config.enable_stream(rs.stream.color, 640, 360, rs.format.bgr8, 60)
-    #
-    config.enable_stream(rs.stream.depth, 640, 360, rs.format.z16, 60)
-    config.enable_stream(rs.stream.accel, rs.format.motion_xyz32f, 250)
-    config.enable_stream(rs.stream.gyro, rs.format.motion_xyz32f, 200)
-
-    pipeline = rs.pipeline()
-    profile = pipeline.start(config)
-    align_to = rs.stream.color
-    align = rs.align(align_to)
+    device = RGBDWithIMU()
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     logger = logging.getLogger(__name__)
@@ -268,34 +255,26 @@ def cmd(
             with time_measure("Frame Fetch"):
                 last_run = time.time()
                 current_time = time.time()
-                frames = pipeline.wait_for_frames()
-                aligned_frames = align.process(frames)
-                color_frame = aligned_frames.get_color_frame()
-                depth_frame = aligned_frames.get_depth_frame()
+                depth_frame, color_frame, acc, gyro, timestamp = device.get_depth_color()
                 if not depth_frame or not color_frame:
                     continue
 
                 # import IPython; IPython.embed()
 
             with time_measure("IMU Calculation"):
-                # Camera pose estimation.
-                acc = frames[2].as_motion_frame().get_motion_data()
-                gyro = frames[3].as_motion_frame().get_motion_data()
-                timestamp = frames[3].as_motion_frame().get_timestamp()
-                # rotation_estimator.process_gyro(
-                #     np.array([gyro.x, gyro.y, gyro.z]), timestamp)
-                # rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
-                # theta = rotation_estimator.get_theta()
+                # 
+                rotation_estimator.process_gyro(
+                    np.array([gyro.x, gyro.y, gyro.z]), timestamp)
+                rotation_estimator.process_accel(np.array([acc.x, acc.y, acc.z]))
+                theta = rotation_estimator.get_theta()
+                print(theta)
+
+                # 
                 acc_vectors.append(np.array([acc.x, acc.y, acc.z]))
                 if len(acc_vectors) > 200:
                     acc_vectors.popleft()
                 acc = np.mean(acc_vectors, axis=0)
                 imu_info = IMUInfo(acc)
-
-                # print(acc)
-                # print(np.array([acc.x, acc.y, acc.z]))
-
-                # print(theta)
 
             with time_measure("Frame Preparation"):
                 # frame = np.asanyarray(color_frame.get_data())

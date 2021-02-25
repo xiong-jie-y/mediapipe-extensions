@@ -11,8 +11,11 @@ output_stream: "output_video"
 output_stream: "face_landmarks_with_iris"
 output_stream: "left_iris_depth_mm"
 output_stream: "right_iris_depth_mm"
+output_stream: "face_detections"
 output_stream: "cloned_face_detections"
 output_stream: "cloned_face_landmarks_with_iris"
+output_stream: "cloned_left_eye_rect_from_landmarks"
+output_stream: "cloned_right_eye_rect_from_landmarks"
 
 # Throttles the images flowing downstream for flow control. It passes through
 # the very first incoming image unaltered, and waits for downstream nodes
@@ -42,7 +45,7 @@ node {
   output_side_packet: "PACKET:num_faces"
   node_options: {
     [type.googleapis.com/mediapipe.ConstantSidePacketCalculatorOptions]: {
-      packet { int_value: 1 }
+      packet { int_value: 10 }
     }
   }
 }
@@ -163,9 +166,13 @@ node {
   calculator: "PacketClonerCalculator"
   input_stream: "face_detections"
   input_stream: "face_landmarks_with_iris"
+  input_stream: "left_eye_rect_from_landmarks"
+  input_stream: "right_eye_rect_from_landmarks"
   input_stream: "input_video"
   output_stream: "cloned_face_detections"
   output_stream: "cloned_face_landmarks_with_iris"
+  output_stream: "cloned_left_eye_rect_from_landmarks"
+  output_stream: "cloned_right_eye_rect_from_landmarks"
 }
 
 node {

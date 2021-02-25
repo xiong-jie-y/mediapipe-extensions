@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import streamlit as st
-import pikapi.logging
+import pikapi.utils.logging
 
 import pikapi.facelandmark_utils as flu
 from pikapi.head_gestures import YesOrNoEstimator, get_minmax_feature_from_base_dir, get_state
@@ -9,7 +9,7 @@ from pikapi.head_gestures import YesOrNoEstimator, get_minmax_feature_from_base_
 def detection_analysis_dashboard():
     # @st.cache(allow_output_mutation=True)
     def load_data(result_folder):
-        return pikapi.logging.HumanReadableLog.load_from_path(result_folder)
+        return pikapi.utils.logging.HumanReadableLog.load_from_path(result_folder)
 
     def get_from_box(box):
         return ((box[2] + box[0])/2 - 250)/50 * 0.05
